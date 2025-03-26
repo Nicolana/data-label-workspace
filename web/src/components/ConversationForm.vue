@@ -9,13 +9,14 @@
           <el-tag :type="getTagType(message.role)" size="large" effect="plain">{{ getRoleName(message.role) }}</el-tag>
         </el-divider>
         
-        <QuillEditor 
-          v-model:content="message.content" 
-          :toolbar="toolbarOptions"
-          :readOnly="message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant'"
-          theme="snow"
-          contentType="html"
-          style="height: 200px; margin-bottom: 20px; width: 100%; border-radius: 4px;"
+        <MdEditor 
+          v-model="message.content" 
+          :toolbars="toolbars"
+          :preview="message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant'"
+          previewTheme="vuepress"
+          :tabWidth="2"
+          height="200px"
+          style="margin-bottom: 20px; width: 100%; border-radius: 4px;"
         />
         
         <div class="message-actions" v-if="index > 0">
@@ -56,21 +57,23 @@
       const formData = ref(JSON.parse(JSON.stringify(props.conversation)))
       const formRef = ref(null)
       
-      // 定义 Quill 编辑器的工具栏选项
-      const toolbarOptions = [
-        ['bold', 'italic', 'underline', 'strike'],
-        ['blockquote', 'code-block'],
-        [{ 'header': 1 }, { 'header': 2 }],
-        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-        [{ 'script': 'sub' }, { 'script': 'super' }],
-        [{ 'indent': '-1' }, { 'indent': '+1' }],
-        [{ 'direction': 'rtl' }],
-        [{ 'size': ['small', false, 'large', 'huge'] }],
-        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'font': [] }],
-        [{ 'align': [] }],
-        ['clean'],
+      // 定义 Markdown 编辑器的工具栏选项
+      const toolbars = [
+        'bold',
+        'italic',
+        'strikethrough',
+        'heading',
+        'quote',
+        'code',
+        'link',
+        'image',
+        'table',
+        'list',
+        'ordered-list',
+        'hr',
+        'undo',
+        'redo',
+        'preview'
       ]
   
       watch(() => props.conversation, (newVal) => {
@@ -123,7 +126,7 @@
         addMessage,
         removeMessage,
         submit,
-        toolbarOptions,
+        toolbars,
         Delete,
         User,
         ChatDotRound
@@ -142,15 +145,6 @@
   </script>
   
   <style>
-  /* 确保编辑器的容器有足够空间 */
-  .ql-container {
-    min-height: 150px;
-    border-radius: 0 0 4px 4px;
-  }
-  .ql-toolbar {
-    border-radius: 4px 4px 0 0;
-    background-color: #f9f9f9;
-  }
   .message-card {
     margin-bottom: 20px;
     position: relative;
@@ -174,5 +168,14 @@
     display: flex;
     justify-content: center;
     margin-top: 20px;
+  }
+  
+  /* 覆盖md-editor样式 */
+  .md-editor {
+    border-radius: 4px;
+  }
+  .md-editor-toolbar {
+    border-radius: 4px 4px 0 0;
+    background-color: #f9f9f9;
   }
   </style>

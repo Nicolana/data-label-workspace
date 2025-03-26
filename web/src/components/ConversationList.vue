@@ -3,12 +3,13 @@
       <div class="list-header">
         <h3><el-icon><ChatLineRound /></el-icon> 对话列表</h3>
         <div class="list-actions">
-          <el-button type="primary" size="small" @click="$emit('create')">新增对话</el-button>
+          <el-button type="primary" size="small" @click="$emit('create')" :icon="Plus">新增对话</el-button>
           <el-button 
             type="success" 
             size="small" 
             @click="exportSelected"
             :disabled="selectedIds.length === 0"
+            :icon="Download"
           >
             批量导出 <span v-if="selectedIds.length > 0">({{ selectedIds.length }})</span>
           </el-button>
@@ -86,7 +87,7 @@
   
   <script>
   import { ref, watch, computed } from 'vue'
-  import { Document, ChatLineRound, Delete, Download } from '@element-plus/icons-vue'
+  import { Document, ChatLineRound, Delete, Download, Plus } from '@element-plus/icons-vue'
   
   export default {
     props: {
@@ -159,8 +160,8 @@
         return conversation.messages ? conversation.messages.length : 0
       }
 
-            // 监听会话列表变化，创建本地副本
-            watch(() => props.conversations, (newVal) => {
+      // 监听会话列表变化，创建本地副本
+      watch(() => props.conversations, (newVal) => {
         // 保持以前的选中状态
         const previousSelectedIds = selectedIds.value
         
@@ -191,7 +192,8 @@
         Document,
         ChatLineRound,
         Delete,
-        Download
+        Download,
+        Plus
       }
     }
   }

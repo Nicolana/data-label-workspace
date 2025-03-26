@@ -20,7 +20,9 @@
               <div class="message-role">{{ getRoleName(message.role) }}</div>
             </div>
             <div class="message-bubble">
-              <div class="message-content" v-html="message.content"></div>
+              <div class="message-content">
+                <MdPreview :modelValue="message.content" :previewTheme="'vuepress'" />
+              </div>
             </div>
           </div>
         </div>
@@ -30,8 +32,12 @@
   
   <script>
   import { Document, User, Service, ChatDotRound, EditPen, Download } from '@element-plus/icons-vue'
+  import { MdPreview } from 'md-editor-v3'
   
   export default {
+    components: {
+      MdPreview
+    },
     props: {
       conversation: {
         type: Object,
@@ -66,7 +72,9 @@
         getMessageClass,
         getAvatarIcon,
         getRoleColorClass,
-        Document
+        Document,
+        EditPen,
+        Download
       }
     },
     methods: {
@@ -168,26 +176,35 @@
     align-items: flex-start;
   }
   
-  /* 为 Quill 内容添加样式 */
-  .message-content .ql-editor {
-    padding: 0;
+  /* 自定义 Markdown 预览样式 */
+  .message-content .md-editor-preview {
+    padding: 0 !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
   }
-  .message-content blockquote {
-    border-left: 4px solid #ccc;
-    margin-bottom: 5px;
-    margin-top: 5px;
-    padding-left: 16px;
+  
+  .message-content .md-editor-preview-wrapper {
+    padding: 0 !important;
   }
+  
   .message-content pre {
-    background-color: #f0f0f0;
-    border-radius: 3px;
-    padding: 8px;
+    margin: 8px 0;
+    padding: 12px;
+    background-color: #f6f8fa;
+    border-radius: 6px;
     overflow-x: auto;
   }
-  .message-content code {
-    background-color: #f0f0f0;
-    border-radius: 3px;
-    padding: 2px 4px;
-    font-family: monospace;
+  
+  .message-content blockquote {
+    padding-left: 1em;
+    border-left: 4px solid #b3d8ff;
+    color: #666;
+    margin: 1em 0;
+  }
+  
+  /* 移除不必要的边距 */
+  .md-preview {
+    margin: 0 !important;
   }
   </style>

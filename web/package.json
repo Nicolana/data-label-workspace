@@ -13,7 +13,7 @@
     "@vueup/vue-quill": "^1.2.0",
     "axios": "^1.8.4",
     "element-plus": "^2.9.7",
-    "quill": "^2.0.3",
+    "md-editor-v3": "^5.4.5",
     "vue": "^3.5.13"
   },
   "devDependencies": {

@@ -1,42 +1,48 @@
 <template>
-    <el-form :model="formData" label-width="80px" ref="formRef">
+    <el-form :model="formData" label-width="100px" ref="formRef">
       <el-form-item label="标题" prop="title" :rules="[{ required: true, message: '请输入标题' }]">
-        <el-input v-model="formData.title" placeholder="请输入对话标题"></el-input>
+        <el-input v-model="formData.title" placeholder="请输入对话标题" clearable></el-input>
       </el-form-item>
       
-      <el-form-item 
-        v-for="(message, index) in formData.messages" 
-        :key="index"
-        :label="getRoleName(message.role)"
-      >
+      <div v-for="(message, index) in formData.messages" :key="index" class="message-card">
+        <el-divider content-position="left">
+          <el-tag :type="getTagType(message.role)" size="large" effect="plain">{{ getRoleName(message.role) }}</el-tag>
+        </el-divider>
+        
         <QuillEditor 
           v-model:content="message.content" 
           :toolbar="toolbarOptions"
           :readOnly="message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant'"
           theme="snow"
           contentType="html"
-          style="height: 200px; margin-bottom: 30px; width: 100%;"
+          style="height: 200px; margin-bottom: 20px; width: 100%; border-radius: 4px;"
         />
-        <el-button 
-          v-if="index > 0" 
-          type="danger" 
-          size="small" 
-          @click="removeMessage(index)"
-          style="margin-top: 10px;"
-        >
-          删除此消息
-        </el-button>
-      </el-form-item>
+        
+        <div class="message-actions" v-if="index > 0">
+          <el-tooltip content="删除此消息" placement="top">
+            <el-button 
+              type="danger" 
+              size="small" 
+              @click="removeMessage(index)"
+              :icon="Delete"
+              circle
+            ></el-button>
+          </el-tooltip>
+        </div>
+      </div>
       
-      <el-form-item>
-        <el-button type="primary" @click="addMessage('user')">添加用户消息</el-button>
-        <el-button type="primary" @click="addMessage('assistant')">添加助手消息</el-button>
-      </el-form-item>
+      <div class="form-actions">
+        <el-button-group>
+          <el-button type="primary" @click="addMessage('user')" :icon="User">添加用户消息</el-button>
+          <el-button type="success" @click="addMessage('assistant')" :icon="ChatDotRound">添加助手消息</el-button>
+        </el-button-group>
+      </div>
     </el-form>
   </template>
   
   <script>
-  import { ref, watch, nextTick } from 'vue'
+  import { ref, watch } from 'vue'
+  import { Delete, User, ChatDotRound } from '@element-plus/icons-vue'
   
   export default {
     props: {
@@ -79,6 +85,15 @@
         }
         return roleNames[role] || role
       }
+      
+      const getTagType = (role) => {
+        const tagTypes = {
+          system: 'info',
+          user: 'warning',
+          assistant: 'success'
+        }
+        return tagTypes[role] || 'info'
+      }
   
       const addMessage = (role) => {
         formData.value.messages.push({
@@ -104,10 +119,14 @@
         formData,
         formRef,
         getRoleName,
+        getTagType,
         addMessage,
         removeMessage,
         submit,
-        toolbarOptions
+        toolbarOptions,
+        Delete,
+        User,
+        ChatDotRound
       }
     },
     methods: {
@@ -126,5 +145,34 @@
   /* 确保编辑器的容器有足够空间 */
   .ql-container {
     min-height: 150px;
+    border-radius: 0 0 4px 4px;
+  }
+  .ql-toolbar {
+    border-radius: 4px 4px 0 0;
+    background-color: #f9f9f9;
+  }
+  .message-card {
+    margin-bottom: 20px;
+    position: relative;
+    padding: 0 10px;
+    border-radius: 8px;
+    background-color: #f7f9fc;
+    border-left: 4px solid #e6e8eb;
+    transition: all 0.3s;
+  }
+  .message-card:hover {
+    border-left-color: #409eff;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  }
+  .message-actions {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+  }
+  .form-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
   }
   </style>

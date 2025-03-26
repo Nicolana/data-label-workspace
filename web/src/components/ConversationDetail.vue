@@ -21,7 +21,7 @@
             </div>
             <div class="message-bubble">
               <div class="message-content">
-                <MdPreview :modelValue="message.content" :previewTheme="'vuepress'" />
+                <MdPreview :modelValue="message.content" :previewTheme="vuepress" :codeFoldable="false"  />
               </div>
             </div>
           </div>
@@ -33,7 +33,8 @@
   <script>
   import { Document, User, Service, ChatDotRound, EditPen, Download } from '@element-plus/icons-vue'
   import { MdPreview } from 'md-editor-v3'
-  
+  import 'md-editor-v3/lib/preview.css';
+
   export default {
     components: {
       MdPreview
@@ -161,7 +162,7 @@
   /* 消息气泡样式 */
   .message-other .message-bubble {
     align-self: flex-start;
-    background-color: #f2f6fc;
+    background-color: #fff;
     border: 1px solid #ebeef5;
   }
   .message-assistant .message-bubble {
@@ -201,10 +202,5 @@
     border-left: 4px solid #b3d8ff;
     color: #666;
     margin: 1em 0;
-  }
-  
-  /* 移除不必要的边距 */
-  .md-preview {
-    margin: 0 !important;
   }
   </style>

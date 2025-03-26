@@ -176,31 +176,4 @@
   .message-other {
     align-items: flex-start;
   }
-  
-  /* 自定义 Markdown 预览样式 */
-  .message-content .md-editor-preview {
-    padding: 0 !important;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-  }
-  
-  .message-content .md-editor-preview-wrapper {
-    padding: 0 !important;
-  }
-  
-  .message-content pre {
-    margin: 8px 0;
-    padding: 12px;
-    background-color: #f6f8fa;
-    border-radius: 6px;
-    overflow-x: auto;
-  }
-  
-  .message-content blockquote {
-    padding-left: 1em;
-    border-left: 4px solid #b3d8ff;
-    color: #666;
-    margin: 1em 0;
-  }
   </style>

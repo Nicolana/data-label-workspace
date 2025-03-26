@@ -7,6 +7,9 @@
           <h1>对话微调数据管理平台</h1>
         </div>
         <div class="app-actions">
+          <el-tooltip content="批量导出">
+            <el-button icon="Download" circle @click="handleBatchExport"></el-button>
+          </el-tooltip>
           <el-tooltip content="返回首页">
             <el-button icon="House" circle></el-button>
           </el-tooltip>
@@ -23,6 +26,8 @@
               @select="handleSelectConversation"
               @create="showCreateDialog"
               @delete="handleDeleteConversation"
+              @export="handleExportConversation"
+              @batch-export="handleBatchExportSelected"
             />
           </transition>
         </el-aside>
@@ -177,22 +182,98 @@ export default {
       }
     }
 
+    // 导出单个对话
     const handleExportConversation = async (id) => {
       try {
         const response = await axios.get(`${API_URL}/conversations/${id}/export`)
         const data = response.data
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `conversation_${id}.json`
-        a.click()
-        URL.revokeObjectURL(url)
+        const jsonlContent = JSON.stringify(data) // 最小化JSON
+        downloadAsFile(jsonlContent, `conversation_${id}.jsonl`)
         ElMessage.success('对话已导出')
       } catch (error) {
         console.error('Error exporting conversation:', error)
         ElMessage.error('导出对话失败')
       }
+    }
+    
+    // 批量导出所有对话
+    const handleBatchExport = async () => {
+      if (conversations.value.length === 0) {
+        ElMessage.warning('没有可导出的对话')
+        return
+      }
+      
+      try {
+        await ElMessageBox.confirm('确定要导出所有对话吗？', '批量导出', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'info'
+        })
+        
+        const ids = conversations.value.map(conv => conv.id)
+        await exportMultipleConversations(ids)
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('批量导出失败:', error)
+          ElMessage.error('批量导出失败')
+        }
+      }
+    }
+    
+    // 批量导出选中的对话
+    const handleBatchExportSelected = async (ids) => {
+      if (!ids || ids.length === 0) {
+        ElMessage.warning('请至少选择一个对话')
+        return
+      }
+      
+      try {
+        await exportMultipleConversations(ids)
+      } catch (error) {
+        console.error('批量导出失败:', error)
+        ElMessage.error('批量导出失败')
+      }
+    }
+    
+    // 导出多个对话的辅助函数
+    const exportMultipleConversations = async (ids) => {
+      try {
+        ElMessage.info({
+          message: '正在准备导出数据...',
+          duration: 0
+        })
+        
+        // 收集所有对话数据
+        const exportPromises = ids.map(id => 
+          axios.get(`${API_URL}/conversations/${id}/export`)
+        )
+        
+        const responses = await Promise.all(exportPromises)
+        const allData = responses.map(response => response.data)
+        
+        // 将每个对话转换为最小化的JSON字符串，每个占一行
+        const jsonlContent = allData.map(data => JSON.stringify(data)).join('\n')
+        
+        // 下载文件
+        downloadAsFile(jsonlContent, `conversations_batch_${new Date().getTime()}.jsonl`)
+        
+        ElMessage.closeAll()
+        ElMessage.success(`成功导出 ${ids.length} 个对话`)
+      } catch (error) {
+        ElMessage.closeAll()
+        throw error
+      }
+    }
+    
+    // 下载文件的辅助函数
+    const downloadAsFile = (content, filename) => {
+      const blob = new Blob([content], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
     }
 
     onMounted(() => {
@@ -211,6 +292,8 @@ export default {
       handleSaveConversation,
       handleDeleteConversation,
       handleExportConversation,
+      handleBatchExport,
+      handleBatchExportSelected,
       ChatSquare
     }
   }

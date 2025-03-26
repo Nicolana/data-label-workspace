@@ -124,13 +124,19 @@ def delete_conversation(conversation_id: int):
 def export_conversation(conversation_id: int):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT messages FROM conversations WHERE id = ?", (conversation_id,))
+        cursor.execute("SELECT title, messages FROM conversations WHERE id = ?", (conversation_id,))
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
-        messages = json.loads(row[0])
-        return {"messages": messages}
+        title = row[0]
+        messages = json.loads(row[1])
+        
+        # 按照对话格式返回
+        return {
+            "title": title,
+            "messages": messages
+        }
 
 if __name__ == "__main__":
     import uvicorn

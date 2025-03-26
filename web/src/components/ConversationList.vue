@@ -2,17 +2,54 @@
     <div class="conversation-list">
       <div class="list-header">
         <h3><el-icon><ChatLineRound /></el-icon> 对话列表</h3>
-        <el-button type="primary" size="small" @click="$emit('create')" icon="Plus">新增对话</el-button>
+        <div class="list-actions">
+          <el-button type="primary" size="small" @click="$emit('create')">新增对话</el-button>
+          <el-button 
+            type="success" 
+            size="small" 
+            @click="exportSelected"
+            :disabled="selectedIds.length === 0"
+          >
+            批量导出 <span v-if="selectedIds.length > 0">({{ selectedIds.length }})</span>
+          </el-button>
+        </div>
       </div>
-      <el-scrollbar height="calc(100vh - 120px)">
+      
+      <div class="list-toolbar">
+        <el-checkbox 
+          v-model="selectAll" 
+          @change="handleSelectAll" 
+          :disabled="conversations.length === 0"
+        >
+          全选
+        </el-checkbox>
+        <el-button 
+          type="text" 
+          size="small" 
+          @click="clearSelection"
+          :disabled="selectedIds.length === 0"
+        >
+          清除选择
+        </el-button>
+      </div>
+      
+      <el-scrollbar height="calc(100vh - 155px)">
         <div class="conversation-items">
           <div 
-            v-for="conversation in conversations" 
+            v-for="conversation in localConversations" 
             :key="conversation.id"
             class="conversation-item"
-            @click="$emit('select', conversation.id)"
+            :class="{ 'conversation-selected': isSelected(conversation.id) }"
+            @click="handleItemClick(conversation)"
           >
-            <div class="conversation-info">
+            <div class="conversation-checkbox">
+              <el-checkbox 
+                v-model="conversation.selected" 
+                @change="updateSelection" 
+                @click.stop
+              ></el-checkbox>
+            </div>
+            <div class="conversation-info" @click.stop="$emit('select', conversation.id)">
               <div class="conversation-title">
                 <el-icon><Document /></el-icon>
                 {{ conversation.title }}
@@ -22,12 +59,21 @@
               </div>
             </div>
             <div class="conversation-actions">
+              <el-tooltip content="导出对话" placement="top">
+                <el-button 
+                  type="success" 
+                  size="small" 
+                  @click.stop="$emit('export', conversation.id)"
+                  :icon="Download"
+                  circle
+                ></el-button>
+              </el-tooltip>
               <el-tooltip content="删除对话" placement="top">
                 <el-button 
                   type="danger" 
                   size="small" 
                   @click.stop="$emit('delete', conversation.id)"
-                  icon="Delete"
+                  :icon="Delete"
                   circle
                 ></el-button>
               </el-tooltip>
@@ -39,7 +85,8 @@
   </template>
   
   <script>
-  import { Document, ChatLineRound } from '@element-plus/icons-vue'
+  import { ref, watch, computed } from 'vue'
+  import { Document, ChatLineRound, Delete, Download } from '@element-plus/icons-vue'
   
   export default {
     props: {
@@ -48,16 +95,103 @@
         required: true
       }
     },
-    emits: ['select', 'create', 'delete'],
-    setup() {
+    emits: ['select', 'create', 'delete', 'export', 'batch-export'],
+    setup(props, { emit }) {
+      // 保存本地会话列表副本，带有选中状态
+      const localConversations = ref([])
+      const selectAll = ref(false)
+         
+      // 计算选中的ID列表
+      const selectedIds = computed(() => {
+        return localConversations.value
+          .filter(conv => conv.selected)
+          .map(conv => conv.id)
+      })
+
+
+   
+      
+      // 检查特定ID是否被选中
+      const isSelected = (id) => {
+        return selectedIds.value.includes(id)
+      }
+      
+      // 全选/取消全选
+      const handleSelectAll = (val) => {
+        localConversations.value.forEach(conv => {
+          conv.selected = val
+        })
+      }
+      
+      // 清除选择
+      const clearSelection = () => {
+        localConversations.value.forEach(conv => {
+          conv.selected = false
+        })
+        selectAll.value = false
+      }
+      
+      // 更新选择状态
+      const updateSelection = () => {
+        if (localConversations.value.length === 0) {
+          selectAll.value = false
+          return
+        }
+        
+        const allSelected = localConversations.value.every(conv => conv.selected)
+        selectAll.value = allSelected
+      }
+      
+      // 点击整个项目时切换选择
+      const handleItemClick = (conversation) => {
+        conversation.selected = !conversation.selected
+        updateSelection()
+      }
+      
+      // 导出选中的对话
+      const exportSelected = () => {
+        if (selectedIds.value.length > 0) {
+          emit('batch-export', selectedIds.value)
+        }
+      }
+      
       const getMessagesCount = (conversation) => {
         return conversation.messages ? conversation.messages.length : 0
       }
+
+            // 监听会话列表变化，创建本地副本
+            watch(() => props.conversations, (newVal) => {
+        // 保持以前的选中状态
+        const previousSelectedIds = selectedIds.value
+        
+        localConversations.value = newVal.map(conv => {
+          // 检查之前是否选中过
+          const wasSelected = previousSelectedIds.includes(conv.id)
+          return {
+            ...conv,
+            selected: wasSelected
+          }
+        })
+        
+        // 更新全选状态
+        updateSelection()
+      }, { immediate: true, deep: true })
       
       return {
+        localConversations,
+        selectAll,
+        selectedIds,
+        isSelected,
+        handleSelectAll,
+        clearSelection,
+        updateSelection,
+        handleItemClick,
+        exportSelected,
         getMessagesCount,
         Document,
-        ChatLineRound
+        ChatLineRound,
+        Delete,
+        Download
       }
     }
   }
@@ -72,7 +206,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     padding-bottom: 10px;
     border-bottom: 1px solid #ebeef5;
   }
@@ -84,6 +218,17 @@
     font-size: 16px;
     color: #303133;
   }
+  .list-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .list-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 15px 10px;
+    margin-bottom: 5px;
+  }
   .conversation-items {
     display: flex;
     flex-direction: column;
@@ -92,7 +237,6 @@
   }
   .conversation-item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     padding: 12px 15px;
     border-radius: 8px;
@@ -106,9 +250,17 @@
     transform: translateY(-2px);
     box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   }
+  .conversation-selected {
+    background-color: #ecf5ff;
+    border-color: #b3d8ff;
+  }
+  .conversation-checkbox {
+    margin-right: 10px;
+  }
   .conversation-info {
     flex: 1;
     overflow: hidden;
+    cursor: pointer;
   }
   .conversation-title {
     display: flex;
@@ -125,6 +277,8 @@
     color: #909399;
   }
   .conversation-actions {
+    display: flex;
+    gap: 5px;
     margin-left: 10px;
     opacity: 0.5;
     transition: opacity 0.2s;

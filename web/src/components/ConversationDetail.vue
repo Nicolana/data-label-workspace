@@ -6,8 +6,8 @@
           {{ conversation.title }}
         </h2>
         <div class="action-buttons">
-          <el-button type="primary" @click="$emit('save', conversation)" icon="EditPen">编辑</el-button>
-          <el-button type="success" @click="$emit('export', conversation.id)" icon="Download">导出JSONL</el-button>
+          <el-button type="primary" @click="$emit('save', conversation)" :icon="EditPen">编辑</el-button>
+          <el-button type="success" @click="$emit('export', conversation.id)" :icon="Download">导出JSONL</el-button>
         </div>
       </div>
       
@@ -29,7 +29,7 @@
   </template>
   
   <script>
-  import { Document, User, Service, ChatDotRound } from '@element-plus/icons-vue'
+  import { Document, User, Service, ChatDotRound, EditPen, Download } from '@element-plus/icons-vue'
   
   export default {
     props: {

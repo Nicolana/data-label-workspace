@@ -37,12 +37,22 @@ DB_FILE = "conversations.db"
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        # 创建对话表
+        # 创建训练数据对话表（保持原有表不变）
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             messages TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """)
+        
+        # 创建聊天对话表
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
@@ -56,7 +66,7 @@ def init_db():
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+            FOREIGN KEY (conversation_id) REFERENCES chat_conversations (id) ON DELETE CASCADE
         )
         """)
         
@@ -359,6 +369,122 @@ async def complete(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# 添加聊天对话相关的数据模型
+class ChatConversation(BaseModel):
+    id: Optional[int] = None
+    title: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+# 添加聊天对话相关的 API 端点
+@app.post("/chat-conversations")
+def create_chat_conversation(conversation: ChatConversation):
+    now = datetime.now().isoformat()
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO chat_conversations (title, created_at, updated_at) VALUES (?, ?, ?)",
+            (conversation.title, now, now)
+        )
+        conversation_id = cursor.lastrowid
+        conn.commit()
+    
+    return {
+        "id": conversation_id,
+        "title": conversation.title,
+        "created_at": now,
+        "updated_at": now
+    }
+
+@app.get("/chat-conversations")
+def list_chat_conversations():
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT c.id, c.title, c.created_at, c.updated_at, 
+                   COUNT(m.id) as message_count
+            FROM chat_conversations c
+            LEFT JOIN chat_messages m ON c.id = m.conversation_id
+            GROUP BY c.id
+            ORDER BY c.updated_at DESC
+        """)
+        rows = cursor.fetchall()
+        conversations = []
+        for row in rows:
+            conversations.append({
+                "id": row[0],
+                "title": row[1],
+                "created_at": row[2],
+                "updated_at": row[3],
+                "message_count": row[4]
+            })
+        return conversations
+
+@app.get("/chat-conversations/{conversation_id}")
+def get_chat_conversation(conversation_id: int):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT c.id, c.title, c.created_at, c.updated_at
+            FROM chat_conversations c
+            WHERE c.id = ?
+        """, (conversation_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # 获取消息列表
+        cursor.execute("""
+            SELECT role, content, created_at
+            FROM chat_messages
+            WHERE conversation_id = ?
+            ORDER BY created_at ASC
+        """, (conversation_id,))
+        messages = []
+        for msg_row in cursor.fetchall():
+            messages.append({
+                "role": msg_row[0],
+                "content": msg_row[1],
+                "created_at": msg_row[2]
+            })
+        
+        return {
+            "id": row[0],
+            "title": row[1],
+            "messages": messages,
+            "created_at": row[2],
+            "updated_at": row[3],
+            "message_count": len(messages)
+        }
+
+@app.delete("/chat-conversations/{conversation_id}")
+def delete_chat_conversation(conversation_id: int):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM chat_conversations WHERE id = ?", (conversation_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        conn.commit()
+    
+    return {"message": "Conversation deleted successfully"}
+
+@app.put("/chat-conversations/{conversation_id}/title")
+def update_chat_conversation_title(conversation_id: int, title: str):
+    now = datetime.now().isoformat()
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?",
+            (title, now, conversation_id)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        conn.commit()
+    
+    return {"id": conversation_id, "title": title, "updated_at": now}
+
 # 添加聊天消息相关的数据模型
 class ChatMessage(BaseModel):
     id: Optional[int] = None
@@ -367,7 +493,7 @@ class ChatMessage(BaseModel):
     content: str
     created_at: Optional[str] = None
 
-# 添加聊天消息相关的 API 端点
+# 修改聊天消息相关的 API 端点
 @app.post("/chat-messages")
 async def create_chat_message(message: ChatMessage):
     now = datetime.now().isoformat()
@@ -382,7 +508,7 @@ async def create_chat_message(message: ChatMessage):
         
         # 更新对话的更新时间
         cursor.execute(
-            "UPDATE conversations SET updated_at = ? WHERE id = ?",
+            "UPDATE chat_conversations SET updated_at = ? WHERE id = ?",
             (now, message.conversation_id)
         )
         

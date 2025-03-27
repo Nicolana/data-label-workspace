@@ -1,7 +1,10 @@
 <template>
     <div class="conversation-list">
-      <div class="list-header">
-        <h3><el-icon><ChatLineRound /></el-icon> 对话列表</h3>
+      <div class="list-header-wrapper">
+        <div class="list-header">
+        <div class="list-header-left">
+          <h3><el-icon><ChatLineRound /></el-icon> 对话列表</h3>
+        </div>
         <div class="list-actions">
           <el-button type="primary" size="small" @click="$emit('create')" :icon="Plus">新增对话</el-button>
           <el-button 
@@ -15,6 +18,21 @@
           </el-button>
         </div>
       </div>
+        <div class="list-stats">
+            <el-tag size="small" effect="plain" type="info">
+              共 {{ conversations.length }} 条对话
+            </el-tag>
+            <el-tag 
+              size="small" 
+              effect="plain" 
+              type="warning"
+              v-if="selectedIds.length > 0"
+            >
+              已选择 {{ selectedIds.length }} 条
+            </el-tag>
+          </div>
+      </div>
+     
       
       <div class="list-toolbar">
         <el-checkbox 
@@ -257,10 +275,15 @@
   .list-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 10px;
     padding-bottom: 10px;
     border-bottom: 1px solid #ebeef5;
+  }
+  .list-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
   .list-header h3 {
     margin: 0;
@@ -269,6 +292,11 @@
     gap: 5px;
     font-size: 16px;
     color: #303133;
+  }
+  .list-stats {
+    display: flex;
+    gap: 8px;
+    padding: 0 15px;
   }
   .list-actions {
     display: flex;
@@ -284,13 +312,13 @@
   .conversation-items {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 4px;
     padding: 5px;
   }
   .conversation-item {
     display: flex;
     align-items: flex-start;
-    padding: 12px 15px;
+    padding: 8px 15px;
     border-radius: 8px;
     background-color: #fff;
     border: 1px solid #ebeef5;

@@ -1,50 +1,93 @@
 <template>
   <div class="chat-container">
-    <div class="messages-container" ref="messagesContainer">
-      <div v-for="message in messages" :key="message.id" class="message" :class="message.role">
-        <div class="message-content">
-          <MdPreview :modelValue="message.content" />
-        </div>
-        <div class="message-time">{{ formatTime(message.created_at) }}</div>
+    <!-- 左侧聊天列表 -->
+    <div class="chat-sidebar">
+      <div class="sidebar-header">
+        <el-button type="primary" @click="handleNewChat">
+          <el-icon><Plus /></el-icon>
+          新对话
+        </el-button>
       </div>
-      <div v-if="isLoading" class="message assistant">
-        <div class="message-content">
-          <MdPreview :modelValue="currentResponse" />
+      <div class="chat-list">
+        <div
+          v-for="chat in chatList"
+          :key="chat.id"
+          class="chat-item"
+          :class="{ active: currentConversationId === chat.id }"
+          @click="handleSelectChat(chat.id)"
+        >
+          <div class="chat-item-content">
+            <el-icon><ChatDotRound /></el-icon>
+            <span class="chat-title">{{ chat.title }}</span>
+          </div>
+          <div class="chat-item-actions">
+            <el-button
+              type="text"
+              @click.stop="handleDeleteChat(chat.id)"
+              :disabled="currentConversationId === chat.id"
+            >
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
-    <div class="input-container">
-      <el-input
-        v-model="userInput"
-        type="textarea"
-        :rows="3"
-        placeholder="输入消息..."
-        @keydown.enter.prevent="handleSend"
-        :disabled="isLoading"
-      />
-      <el-button 
-        type="primary" 
-        @click="handleSend" 
-        :loading="isLoading"
-        :disabled="!userInput.trim() || isLoading"
-      >
-        发送
-      </el-button>
+
+    <!-- 右侧聊天区域 -->
+    <div class="chat-main">
+      <div class="messages-container" ref="messagesContainer">
+        <div v-if="messages.length === 0 && !isLoading" class="empty-message">
+          <el-empty description="开始新的对话" />
+        </div>
+        <div v-for="message in messages" :key="message.id" class="message" :class="message.role">
+          <div class="message-content">
+            <MdPreview :modelValue="message.content" />
+          </div>
+          <div class="message-time">{{ formatTime(message.created_at) }}</div>
+        </div>
+        <div v-if="isLoading" class="message assistant">
+          <div class="message-content">
+            <MdPreview :modelValue="currentResponse" />
+          </div>
+        </div>
+      </div>
+      <div class="input-container">
+        <el-input
+          v-model="userInput"
+          type="textarea"
+          :rows="3"
+          placeholder="输入消息..."
+          @keydown.enter.prevent="handleSend"
+          :disabled="isLoading || !currentConversationId"
+        />
+        <el-button 
+          type="primary" 
+          @click="handleSend" 
+          :loading="isLoading"
+          :disabled="!userInput.trim() || isLoading || !currentConversationId"
+        >
+          发送
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
 import { ref, onMounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import { MdPreview } from 'md-editor-v3'
+import { Plus, ChatDotRound, Delete } from '@element-plus/icons-vue'
 import 'md-editor-v3/lib/preview.css'
 
 export default {
   name: 'ChatView',
   components: {
-    MdPreview
+    MdPreview,
+    Plus,
+    ChatDotRound,
+    Delete
   },
   setup() {
     const messages = ref([])
@@ -53,21 +96,63 @@ export default {
     const currentResponse = ref('')
     const messagesContainer = ref(null)
     const currentConversationId = ref(null)
+    const chatList = ref([])
     const API_URL = 'http://localhost:8000'
 
+    // 获取聊天列表
+    const fetchChatList = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/conversations`)
+        chatList.value = response.data
+      } catch (error) {
+        console.error('获取聊天列表失败:', error)
+        ElMessage.error('获取聊天列表失败')
+      }
+    }
+
     // 创建新对话
-    const createConversation = async () => {
+    const handleNewChat = async () => {
       try {
         const response = await axios.post(`${API_URL}/conversations`, {
           title: `新对话 ${new Date().toLocaleString()}`,
           messages: []
         })
         currentConversationId.value = response.data.id
-        return response.data.id
+        await fetchChatList()
+        messages.value = []
       } catch (error) {
         console.error('创建对话失败:', error)
         ElMessage.error('创建对话失败')
-        throw error
+      }
+    }
+
+    // 选择对话
+    const handleSelectChat = async (id) => {
+      currentConversationId.value = id
+      await fetchMessages(id)
+    }
+
+    // 删除对话
+    const handleDeleteChat = async (id) => {
+      try {
+        await ElMessageBox.confirm('确定要删除这个对话吗？此操作不可恢复', '警告', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        
+        await axios.delete(`${API_URL}/conversations/${id}`)
+        if (currentConversationId.value === id) {
+          currentConversationId.value = null
+          messages.value = []
+        }
+        await fetchChatList()
+        ElMessage.success('对话已删除')
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('删除对话失败:', error)
+          ElMessage.error('删除对话失败')
+        }
       }
     }
 
@@ -84,7 +169,7 @@ export default {
 
     // 发送消息
     const handleSend = async () => {
-      if (!userInput.value.trim() || isLoading.value) return
+      if (!userInput.value.trim() || isLoading.value || !currentConversationId.value) return
 
       const content = userInput.value.trim()
       userInput.value = ''
@@ -92,11 +177,6 @@ export default {
       currentResponse.value = ''
 
       try {
-        // 如果没有对话，创建一个新对话
-        if (!currentConversationId.value) {
-          await createConversation()
-        }
-
         // 保存用户消息
         await axios.post(`${API_URL}/chat-messages`, {
           conversation_id: currentConversationId.value,
@@ -179,8 +259,7 @@ export default {
     }
 
     onMounted(async () => {
-      // 创建新对话
-      await createConversation()
+      await fetchChatList()
     })
 
     return {
@@ -189,6 +268,11 @@ export default {
       isLoading,
       currentResponse,
       messagesContainer,
+      chatList,
+      currentConversationId,
+      handleNewChat,
+      handleSelectChat,
+      handleDeleteChat,
       handleSend,
       formatTime,
       scrollToBottom
@@ -201,8 +285,75 @@ export default {
 .chat-container {
   height: 100%;
   display: flex;
-  flex-direction: column;
   background-color: #f5f7fa;
+}
+
+.chat-sidebar {
+  width: 300px;
+  background-color: white;
+  border-right: 1px solid #dcdfe6;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid #dcdfe6;
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.chat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.chat-item:hover {
+  background-color: #f5f7fa;
+}
+
+.chat-item.active {
+  background-color: #ecf5ff;
+  color: #409EFF;
+}
+
+.chat-item-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chat-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-item-actions {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-item:hover .chat-item-actions {
+  opacity: 1;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .messages-container {
@@ -212,6 +363,13 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.empty-message {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .message {

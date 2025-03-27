@@ -175,6 +175,11 @@ const handleSendMessage = async () => {
       role: 'user',
       content: message
     }
+
+    // 添加用户消息
+    await axios.post('/api/chat-messages', userMessage)
+
+
     messages.value.push({
       ...userMessage,
       created_at: new Date().toISOString()
@@ -240,6 +245,8 @@ const handleSendMessage = async () => {
         }
       }
     }
+
+    await axios.post('/api/chat-messages', assistantMessage)
   } catch (error) {
     console.error('流式读取失败: ', error)
     ElMessage.error('发送消息失败')

@@ -28,7 +28,7 @@
         <el-input-number
           v-model="form.max_tokens"
           :min="100"
-          :max="10000"
+          :max="4000"
           :step="100"
           placeholder="最大生成 token 数量"
         />
@@ -45,7 +45,7 @@
     </el-form>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="handleClose">取消</el-button>
         <el-button type="primary" @click="handleSubmit" :loading="loading">
           生成对话
         </el-button>
@@ -79,9 +79,9 @@ export default {
     const handleClose = () => {
       emit('update:modelValue', false)
       form.value = {
-        system_prompt: '',
+        system_prompt: '你是一个专业的前端开发助手，你会帮助用户完成前端开发相关的任务。',
         prompt: '',
-        max_tokens: 1000,
+        max_tokens: 4000,
         temperature: 0.7
       }
     }

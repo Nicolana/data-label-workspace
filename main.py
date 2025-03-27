@@ -7,14 +7,20 @@ from datetime import datetime
 import sqlite3
 from pathlib import Path
 import tiktoken
-import httpx
 import os
 from dotenv import load_dotenv
+from openai import OpenAI
 
 # 加载环境变量
 load_dotenv()
 
 app = FastAPI()
+
+# OpenAI 配置
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_HOST = os.getenv("OPENAI_API_HOST")
+client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_API_HOST)
+
 # 允许跨域
 app.add_middleware(
     CORSMiddleware,
@@ -23,10 +29,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# DeepSeek API 配置
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # 数据库初始化
 DB_FILE = "conversations.db"
@@ -84,44 +86,42 @@ class Conversation(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str
     system_prompt: Optional[str] = None
-    max_tokens: Optional[int] = 6000
+    max_tokens: Optional[int] = 4000
     temperature: Optional[float] = 0.7
 
-# DeepSeek API 调用
-async def call_deepseek(prompt: str, system_prompt: str = None, max_tokens: int = 6000, temperature: float = 0.7):
-    if not DEEPSEEK_API_KEY:
-        raise HTTPException(status_code=500, detail="DeepSeek API key not configured")
+# OpenAI API 调用
+async def call_openai(prompt: str, system_prompt: str = None, max_tokens: int = 4000, temperature: float = 0.7):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
     
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            DEEPSEEK_API_URL,
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature
-            }
+    try:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature
         )
         
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="DeepSeek API call failed")
-        
-        return response.json()
+        return {
+            "choices": [{
+                "message": {
+                    "content": response.choices[0].message.content
+                }
+            }]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate")
 async def generate_conversation(request: GenerateRequest):
     try:
-        # 调用 DeepSeek API
-        response = await call_deepseek(
+        # 调用 OpenAI API
+        response = await call_openai(
             prompt=request.prompt,
             system_prompt=request.system_prompt,
             max_tokens=request.max_tokens,
@@ -130,12 +130,13 @@ async def generate_conversation(request: GenerateRequest):
         
         # 创建对话
         messages = [
+            Message(role="system", content=request.system_prompt),
             Message(role="user", content=request.prompt),
             Message(role="assistant", content=response["choices"][0]["message"]["content"])
         ]
         
         # 生成标题
-        title = f"DeepSeek 对话 {datetime.now().strftime('%Y%m%d %H%M%S')}"
+        title = f"GPT-4 对话 {datetime.now().strftime('%Y%m%d %H%M%S')}"
         
         # 保存到数据库
         now = datetime.now().isoformat()

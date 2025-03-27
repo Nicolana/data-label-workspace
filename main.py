@@ -88,7 +88,8 @@ def list_conversations():
                 "title": row[1],
                 "created_at": row[3],
                 "updated_at": row[4],
-                "token_count": token_count
+                "token_count": token_count,
+                "message_count": len(messages)
             })
         return conversations
 
@@ -109,7 +110,8 @@ def get_conversation(conversation_id: int):
             "messages": messages,
             "created_at": row[3],
             "updated_at": row[4],
-            "token_count": token_count
+            "token_count": token_count,
+            "message_count": len(messages)
         }
 
 @app.post("/conversations")

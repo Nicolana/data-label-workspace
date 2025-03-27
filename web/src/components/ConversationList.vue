@@ -56,7 +56,7 @@
                 {{ conversation.title }}
               </div>
               <div class="conversation-meta">
-                <el-tag size="small" effect="plain">{{ getMessagesCount(conversation) }}条消息</el-tag>
+                <el-tag size="small" effect="plain">{{ conversation.message_count }}条消息</el-tag>
                 <el-tag 
                   size="small" 
                   :type="conversation.token_count > 4000 ? 'danger' : 'success'"

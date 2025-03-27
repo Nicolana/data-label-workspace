@@ -2,16 +2,13 @@
     <div class="conversation-list">
       <div class="list-header-wrapper">
         <div class="list-header">
-        <div class="list-header-left">
-          <h3><el-icon><ChatLineRound /></el-icon> 对话列表</h3>
-        </div>
         <div class="list-actions">
           <el-button type="primary" size="small" @click="$emit('create')" :icon="Plus">新增对话</el-button>
           <el-button 
             type="warning" 
             size="small" 
             @click="showGenerateDialog"
-            :icon="Magic"
+            :icon="MagicStick"
           >
             生成对话
           </el-button>
@@ -135,7 +132,7 @@
   
   <script>
   import { ref, watch, computed } from 'vue'
-  import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument, Magic } from '@element-plus/icons-vue'
+  import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument, MagicStick } from '@element-plus/icons-vue'
   import { encoding_for_model } from 'tiktoken'
   import GenerateDialog from './GenerateDialog.vue'
   
@@ -285,10 +282,10 @@
         Download,
         Plus,
         CopyDocument,
-        Magic,
         generateDialogVisible,
         showGenerateDialog,
-        handleGenerateSuccess
+        handleGenerateSuccess,
+        MagicStick,
       }
     }
   }
@@ -300,11 +297,8 @@
     border-right: 1px solid #ebeef5;
   }
   .list-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
     margin-bottom: 10px;
-    padding-bottom: 10px;
+    padding: 10px 15px;
     border-bottom: 1px solid #ebeef5;
   }
   .list-header-left {
@@ -317,8 +311,9 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 16px;
+    font-size: 20px;
     color: #303133;
+    padding-bottom: 10px;
   }
   .list-stats {
     display: flex;

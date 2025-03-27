@@ -15,6 +15,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+# 允许跨域
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # DeepSeek API 配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -76,11 +84,11 @@ class Conversation(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str
     system_prompt: Optional[str] = None
-    max_tokens: Optional[int] = 1000
+    max_tokens: Optional[int] = 6000
     temperature: Optional[float] = 0.7
 
 # DeepSeek API 调用
-async def call_deepseek(prompt: str, system_prompt: str = None, max_tokens: int = 1000, temperature: float = 0.7):
+async def call_deepseek(prompt: str, system_prompt: str = None, max_tokens: int = 6000, temperature: float = 0.7):
     if not DEEPSEEK_API_KEY:
         raise HTTPException(status_code=500, detail="DeepSeek API key not configured")
     

@@ -1,6 +1,7 @@
 <template>
   <el-dialog
-    v-model="dialogVisible"
+    :model-value="modelValue"
+    @update:model-value="$emit('update:modelValue', $event)"
     title="使用 DeepSeek 生成对话"
     width="600px"
     :close-on-click-modal="false"
@@ -27,7 +28,7 @@
         <el-input-number
           v-model="form.max_tokens"
           :min="100"
-          :max="4000"
+          :max="10000"
           :step="100"
           placeholder="最大生成 token 数量"
         />
@@ -54,7 +55,7 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
@@ -67,12 +68,11 @@ export default {
   },
   emits: ['update:modelValue', 'success'],
   setup(props, { emit }) {
-    const dialogVisible = ref(props.modelValue)
     const loading = ref(false)
     const form = ref({
-      system_prompt: '',
+      system_prompt: '你是Spotter Gmesh项目的一个前端开发辅助，你会接收用户给出的任务，来帮助他完成代码编写',
       prompt: '',
-      max_tokens: 1000,
+      max_tokens: 4000,
       temperature: 0.7
     })
 
@@ -107,7 +107,6 @@ export default {
     }
 
     return {
-      dialogVisible,
       loading,
       form,
       handleClose,

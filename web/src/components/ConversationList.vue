@@ -31,25 +31,24 @@
               已选择 {{ selectedIds.length }} 条
             </el-tag>
           </div>
-      </div>
-     
-      
-      <div class="list-toolbar">
-        <el-checkbox 
-          v-model="selectAll" 
-          @change="handleSelectAll" 
-          :disabled="conversations.length === 0"
-        >
-          全选
-        </el-checkbox>
-        <el-button 
-          type="text" 
-          size="small" 
-          @click="clearSelection"
-          :disabled="selectedIds.length === 0"
-        >
-          清除选择
-        </el-button>
+
+          <div class="list-toolbar">
+          <el-checkbox 
+            v-model="selectAll" 
+            @change="handleSelectAll" 
+            :disabled="conversations.length === 0"
+          >
+            全选
+          </el-checkbox>
+          <el-button 
+            type="text" 
+            size="small" 
+            @click="clearSelection"
+            :disabled="selectedIds.length === 0"
+          >
+            清除选择
+          </el-button>
+        </div>
       </div>
       
       <el-scrollbar height="calc(100vh - 155px)">
@@ -376,5 +375,13 @@
   }
   .conversation-item:hover .conversation-actions {
     opacity: 1;
+  }
+
+  .list-header-wrapper {
+    background-color: #fff;
+    padding: 8px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
   </style>

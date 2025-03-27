@@ -176,6 +176,45 @@ def export_conversation(conversation_id: int):
             "messages": messages
         }
 
+@app.post("/conversations/{conversation_id}/copy")
+def copy_conversation(conversation_id: int):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        # 获取原始对话
+        cursor.execute("SELECT title, messages FROM conversations WHERE id = ?", (conversation_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # 创建新标题
+        original_title = row[0]
+        new_title = f"{original_title} (副本)"
+        
+        # 插入新对话
+        now = datetime.now().isoformat()
+        cursor.execute(
+            "INSERT INTO conversations (title, messages, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (new_title, row[1], now, now)
+        )
+        new_id = cursor.lastrowid
+        conn.commit()
+        
+        # 获取新对话的完整信息
+        cursor.execute("SELECT id, title, messages, created_at, updated_at FROM conversations WHERE id = ?", (new_id,))
+        row = cursor.fetchone()
+        messages = json.loads(row[2])
+        token_count = count_tokens(messages)
+        
+        return {
+            "id": row[0],
+            "title": row[1],
+            "messages": messages,
+            "created_at": row[3],
+            "updated_at": row[4],
+            "token_count": token_count,
+            "message_count": len(messages)
+        }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

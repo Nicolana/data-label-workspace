@@ -67,6 +67,15 @@
               </div>
             </div>
             <div class="conversation-actions">
+              <el-tooltip content="复制对话" placement="top">
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  @click.stop="$emit('copy', conversation.id)"
+                  :icon="CopyDocument"
+                  circle
+                ></el-button>
+              </el-tooltip>
               <el-tooltip content="导出对话" placement="top">
                 <el-button 
                   type="success" 
@@ -94,7 +103,7 @@
   
   <script>
   import { ref, watch, computed } from 'vue'
-  import { Document, ChatLineRound, Delete, Download, Plus } from '@element-plus/icons-vue'
+  import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument } from '@element-plus/icons-vue'
   import { encoding_for_model } from 'tiktoken'
   
   export default {
@@ -104,7 +113,7 @@
         required: true
       }
     },
-    emits: ['select', 'create', 'delete', 'export', 'batch-export'],
+    emits: ['select', 'create', 'delete', 'export', 'batch-export', 'copy'],
     setup(props, { emit }) {
       // 保存本地会话列表副本，带有选中状态
       const localConversations = ref([])
@@ -229,7 +238,8 @@
         ChatLineRound,
         Delete,
         Download,
-        Plus
+        Plus,
+        CopyDocument
       }
     }
   }

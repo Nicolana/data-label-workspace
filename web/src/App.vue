@@ -28,6 +28,7 @@
               @delete="handleDeleteConversation"
               @export="handleExportConversation"
               @batch-export="handleBatchExportSelected"
+              @copy="handleCopyConversation"
             />
           </transition>
         </el-aside>
@@ -276,6 +277,17 @@ export default {
       URL.revokeObjectURL(url)
     }
 
+    const handleCopyConversation = async (conversationId) => {
+      try {
+        const response = await axios.post(`${API_URL}/conversations/${conversationId}/copy`)
+        await fetchConversations()
+        ElMessage.success('对话复制成功')
+      } catch (error) {
+        console.error('复制对话失败:', error)
+        ElMessage.error('复制对话失败')
+      }
+    }
+
     onMounted(() => {
       fetchConversations()
     })
@@ -294,6 +306,7 @@ export default {
       handleExportConversation,
       handleBatchExport,
       handleBatchExportSelected,
+      handleCopyConversation,
       ChatSquare
     }
   }

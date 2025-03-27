@@ -3,13 +3,13 @@
     <div class="messages-container" ref="messagesContainer">
       <div v-for="message in messages" :key="message.id" class="message" :class="message.role">
         <div class="message-content">
-          <MdEditor v-model="message.content" :preview-only="true" />
+          <MdPreview :modelValue="message.content" />
         </div>
         <div class="message-time">{{ formatTime(message.created_at) }}</div>
       </div>
       <div v-if="isLoading" class="message assistant">
         <div class="message-content">
-          <MdEditor v-model="currentResponse" :preview-only="true" />
+          <MdPreview :modelValue="currentResponse" />
         </div>
       </div>
     </div>
@@ -38,9 +38,14 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { MdPreview } from 'md-editor-v3'
+import 'md-editor-v3/lib/preview.css'
 
 export default {
   name: 'ChatView',
+  components: {
+    MdPreview
+  },
   setup() {
     const messages = ref([])
     const userInput = ref('')

@@ -71,7 +71,6 @@
             <div class="conversation-content">
               <div class="conversation-info" @click.stop="$emit('select', conversation.id)">
                 <div class="conversation-title">
-                  <el-icon><Document /></el-icon>
                   {{ conversation.title }}
                 </div>
                 <div class="conversation-footer">

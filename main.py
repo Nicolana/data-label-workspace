@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -10,6 +10,7 @@ import tiktoken
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from fastapi.responses import StreamingResponse
 
 # 加载环境变量
 load_dotenv()
@@ -36,6 +37,7 @@ DB_FILE = "conversations.db"
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
+        # 创建对话表
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +47,29 @@ def init_db():
             updated_at TEXT NOT NULL
         )
         """)
+        
+        # 创建聊天消息表
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+        )
+        """)
+        
+        # 创建索引
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id 
+        ON chat_messages (conversation_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at 
+        ON chat_messages (created_at)
+        """)
+        
         conn.commit()
 
 init_db()
@@ -90,57 +115,61 @@ class GenerateRequest(BaseModel):
     temperature: Optional[float] = 0.7
 
 # OpenAI API 调用
-async def call_openai(prompt: str, system_prompt: str = None, max_tokens: int = 4000, temperature: float = 0.7):
+async def call_openai(messages, stream=False, temperature=0.7, max_tokens=4000):
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
     
     try:
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature
+            stream=stream,
+            temperature=temperature,
+            max_tokens=max_tokens
         )
         
-        return {
-            "choices": [{
-                "message": {
-                    "content": response.choices[0].message.content
-                }
-            }]
-        }
+        if stream:
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
+        else:
+            yield f"data: {json.dumps({'content': response.choices[0].message.content})}\n\n"
+                
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if stream:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        raise e
 
 @app.post("/generate")
 async def generate_conversation(request: GenerateRequest):
     try:
+        # 构建消息
+        messages = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.prompt})
+        
         # 调用 OpenAI API
-        response = await call_openai(
-            prompt=request.prompt,
-            system_prompt=request.system_prompt,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature
-        )
+        response_content = ""
+        async for chunk in call_openai(
+            messages=messages,
+            stream=False,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens
+        ):
+            data = json.loads(chunk.split('data: ')[1])
+            if 'content' in data:
+                response_content = data['content']
         
         # 创建对话
-        messages = [
-            Message(role="system", content=request.system_prompt),
-            Message(role="user", content=request.prompt),
-            Message(role="assistant", content=response["choices"][0]["message"]["content"])
-        ]
+        messages.append({"role": "assistant", "content": response_content})
         
         # 生成标题
         title = f"GPT-4 对话 {datetime.now().strftime('%Y%m%d %H%M%S')}"
         
         # 保存到数据库
         now = datetime.now().isoformat()
-        messages_json = json.dumps([msg.dict() for msg in messages])
+        messages_json = json.dumps(messages)
         
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -303,6 +332,99 @@ def copy_conversation(conversation_id: int):
             "token_count": token_count,
             "message_count": len(messages)
         }
+
+@app.post("/complete")
+async def complete(request: Request):
+    try:
+        data = await request.json()
+        messages = data.get("messages", [])
+        
+        if not messages:
+            raise HTTPException(status_code=400, detail="消息不能为空")
+            
+        # 调用 OpenAI API
+        async def event_generator():
+            async for chunk in call_openai(messages, stream=True):
+                yield chunk
+        
+        # 返回流式响应
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 添加聊天消息相关的数据模型
+class ChatMessage(BaseModel):
+    id: Optional[int] = None
+    conversation_id: int
+    role: str
+    content: str
+    created_at: Optional[str] = None
+
+# 添加聊天消息相关的 API 端点
+@app.post("/chat-messages")
+async def create_chat_message(message: ChatMessage):
+    now = datetime.now().isoformat()
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO chat_messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+            (message.conversation_id, message.role, message.content, now)
+        )
+        message_id = cursor.lastrowid
+        
+        # 更新对话的更新时间
+        cursor.execute(
+            "UPDATE conversations SET updated_at = ? WHERE id = ?",
+            (now, message.conversation_id)
+        )
+        
+        conn.commit()
+    
+    return {
+        "id": message_id,
+        "conversation_id": message.conversation_id,
+        "role": message.role,
+        "content": message.content,
+        "created_at": now
+    }
+
+@app.get("/chat-messages/{conversation_id}")
+def get_chat_messages(conversation_id: int):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
+            (conversation_id,)
+        )
+        rows = cursor.fetchall()
+        
+        messages = []
+        for row in rows:
+            messages.append({
+                "id": row[0],
+                "role": row[1],
+                "content": row[2],
+                "created_at": row[3]
+            })
+        
+        return messages
+
+@app.delete("/chat-messages/{conversation_id}")
+def delete_chat_messages(conversation_id: int):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM chat_messages WHERE conversation_id = ?", (conversation_id,))
+        conn.commit()
+    
+    return {"message": "Chat messages deleted successfully"}
 
 if __name__ == "__main__":
     import uvicorn

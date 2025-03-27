@@ -1,41 +1,32 @@
 <template>
   <div class="chat-container">
-    <div class="chat-messages" ref="messagesContainer">
-      <div v-for="(message, index) in messages" :key="index" class="message" :class="message.role">
-        <div class="message-avatar">
-          <el-avatar :size="40" :icon="message.role === 'user' ? User : ChatDotRound" />
-        </div>
+    <div class="messages-container" ref="messagesContainer">
+      <div v-for="message in messages" :key="message.id" class="message" :class="message.role">
         <div class="message-content">
-          <div class="message-text" v-html="formatMarkdown(message.content)"></div>
-          <div class="message-time">{{ formatTime(message.timestamp) }}</div>
+          <MdEditor v-model="message.content" :preview-only="true" />
         </div>
+        <div class="message-time">{{ formatTime(message.created_at) }}</div>
       </div>
-      <div v-if="isGenerating" class="message assistant">
-        <div class="message-avatar">
-          <el-avatar :size="40" :icon="ChatDotRound" />
-        </div>
+      <div v-if="isLoading" class="message assistant">
         <div class="message-content">
-          <div class="message-text" v-html="formatMarkdown(generatedContent)"></div>
-          <div class="message-time">正在输入...</div>
+          <MdEditor v-model="currentResponse" :preview-only="true" />
         </div>
       </div>
     </div>
-    
-    <div class="chat-input">
+    <div class="input-container">
       <el-input
         v-model="userInput"
         type="textarea"
         :rows="3"
-        placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"
-        @keydown.enter.prevent="handleEnter"
-        :disabled="isGenerating"
-        ref="inputRef"
+        placeholder="输入消息..."
+        @keydown.enter.prevent="handleSend"
+        :disabled="isLoading"
       />
       <el-button 
         type="primary" 
-        @click="sendMessage" 
-        :loading="isGenerating"
-        :disabled="!userInput.trim() || isGenerating"
+        @click="handleSend" 
+        :loading="isLoading"
+        :disabled="!userInput.trim() || isLoading"
       >
         发送
       </el-button>
@@ -45,81 +36,93 @@
 
 <script>
 import { ref, onMounted, nextTick } from 'vue'
-import { User, ChatDotRound } from '@element-plus/icons-vue'
-import { marked } from 'marked'
-import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import axios from 'axios'
 
 export default {
   name: 'ChatView',
-  components: {
-    User,
-    ChatDotRound
-  },
   setup() {
     const messages = ref([])
     const userInput = ref('')
-    const isGenerating = ref(false)
-    const generatedContent = ref('')
+    const isLoading = ref(false)
+    const currentResponse = ref('')
     const messagesContainer = ref(null)
-    const inputRef = ref(null)
+    const currentConversationId = ref(null)
+    const API_URL = 'http://localhost:8000'
 
-    const formatMarkdown = (content) => {
-      return marked(content)
-    }
-
-    const formatTime = (timestamp) => {
-      return new Date(timestamp).toLocaleTimeString()
-    }
-
-    const scrollToBottom = async () => {
-      await nextTick()
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    // 创建新对话
+    const createConversation = async () => {
+      try {
+        const response = await axios.post(`${API_URL}/conversations`, {
+          title: `新对话 ${new Date().toLocaleString()}`,
+          messages: []
+        })
+        currentConversationId.value = response.data.id
+        return response.data.id
+      } catch (error) {
+        console.error('创建对话失败:', error)
+        ElMessage.error('创建对话失败')
+        throw error
       }
     }
 
-    const handleEnter = (event) => {
-      if (event.shiftKey) {
-        return
+    // 获取历史消息
+    const fetchMessages = async (conversationId) => {
+      try {
+        const response = await axios.get(`${API_URL}/chat-messages/${conversationId}`)
+        messages.value = response.data
+      } catch (error) {
+        console.error('获取消息失败:', error)
+        ElMessage.error('获取消息失败')
       }
-      sendMessage()
     }
 
-    const sendMessage = async () => {
-      if (!userInput.value.trim() || isGenerating.value) return
+    // 发送消息
+    const handleSend = async () => {
+      if (!userInput.value.trim() || isLoading.value) return
 
-      const userMessage = {
-        role: 'user',
-        content: userInput.value,
-        timestamp: new Date().toISOString()
-      }
-      messages.value.push(userMessage)
-      const currentInput = userInput.value
+      const content = userInput.value.trim()
       userInput.value = ''
-      isGenerating.value = true
-      generatedContent.value = ''
+      isLoading.value = true
+      currentResponse.value = ''
 
       try {
-        const response = await fetch('http://localhost:8000/generate', {
+        // 如果没有对话，创建一个新对话
+        if (!currentConversationId.value) {
+          await createConversation()
+        }
+
+        // 保存用户消息
+        await axios.post(`${API_URL}/chat-messages`, {
+          conversation_id: currentConversationId.value,
+          role: 'user',
+          content: content
+        })
+
+        // 获取历史消息
+        const historyResponse = await axios.get(`${API_URL}/chat-messages/${currentConversationId.value}`)
+        const history = historyResponse.data.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+
+        // 调用 AI 接口
+        const response = await fetch(`${API_URL}/complete`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            prompt: currentInput,
-            system_prompt: '你是一个专业的AI助手，请用简洁专业的语言回答用户的问题。',
-            max_tokens: 4000,
-            temperature: 0.7,
-            stream: true
+            messages: history
           })
         })
 
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
+        let assistantMessage = ''
 
         while (true) {
-          const { done, value } = await reader.read()
+          const { value, done } = await reader.read()
           if (done) break
 
           const chunk = decoder.decode(value)
@@ -127,57 +130,63 @@ export default {
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
-              const data = line.slice(6)
-              if (data === '[DONE]') {
-                messages.value.push({
-                  role: 'assistant',
-                  content: generatedContent.value,
-                  timestamp: new Date().toISOString()
-                })
-                isGenerating.value = false
-                break
-              }
-
-              try {
-                const parsed = JSON.parse(data)
-                if (parsed.error) {
-                  throw new Error(parsed.error)
-                }
-                if (parsed.content) {
-                  generatedContent.value += parsed.content
-                  await scrollToBottom()
-                }
-              } catch (e) {
-                console.error('解析响应失败:', e)
-                ElMessage.error('生成失败')
-                isGenerating.value = false
-                break
+              const data = JSON.parse(line.slice(6))
+              if (data.content) {
+                assistantMessage += data.content
+                currentResponse.value = assistantMessage
+                await nextTick()
+                scrollToBottom()
+              } else if (data.error) {
+                throw new Error(data.error)
               }
             }
           }
         }
+
+        // 保存 AI 回复
+        await axios.post(`${API_URL}/chat-messages`, {
+          conversation_id: currentConversationId.value,
+          role: 'assistant',
+          content: assistantMessage
+        })
+
+        // 更新消息列表
+        await fetchMessages(currentConversationId.value)
+        currentResponse.value = ''
       } catch (error) {
         console.error('发送消息失败:', error)
-        ElMessage.error(error.message || '发送失败')
-        isGenerating.value = false
+        ElMessage.error('发送消息失败')
+      } finally {
+        isLoading.value = false
       }
     }
 
-    onMounted(() => {
-      inputRef.value?.focus()
+    // 格式化时间
+    const formatTime = (timestamp) => {
+      return new Date(timestamp).toLocaleString()
+    }
+
+    // 滚动到底部
+    const scrollToBottom = () => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+      }
+    }
+
+    onMounted(async () => {
+      // 创建新对话
+      await createConversation()
     })
 
     return {
       messages,
       userInput,
-      isGenerating,
-      generatedContent,
+      isLoading,
+      currentResponse,
       messagesContainer,
-      inputRef,
-      formatMarkdown,
+      handleSend,
       formatTime,
-      handleEnter,
-      sendMessage
+      scrollToBottom
     }
   }
 }
@@ -185,13 +194,13 @@ export default {
 
 <style scoped>
 .chat-container {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px);
   background-color: #f5f7fa;
 }
 
-.chat-messages {
+.messages-container {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
@@ -201,77 +210,47 @@ export default {
 }
 
 .message {
-  display: flex;
-  gap: 12px;
   max-width: 80%;
+  padding: 12px 16px;
+  border-radius: 8px;
+  position: relative;
 }
 
 .message.user {
-  margin-left: auto;
-  flex-direction: row-reverse;
-}
-
-.message-content {
-  background-color: white;
-  padding: 12px 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-}
-
-.message.user .message-content {
-  background-color: #409eff;
+  align-self: flex-end;
+  background-color: #409EFF;
   color: white;
 }
 
-.message-text {
-  white-space: pre-wrap;
-  word-break: break-word;
+.message.assistant {
+  align-self: flex-start;
+  background-color: white;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 
-.message-text :deep(p) {
-  margin: 0;
-}
-
-.message-text :deep(code) {
-  background-color: rgba(0, 0, 0, 0.1);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-family: monospace;
-}
-
-.message.user .message-text :deep(code) {
-  background-color: rgba(255, 255, 255, 0.2);
+.message-content {
+  margin-bottom: 4px;
 }
 
 .message-time {
   font-size: 12px;
   color: #909399;
-  margin-top: 4px;
   text-align: right;
 }
 
-.message.user .message-time {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.chat-input {
+.input-container {
   padding: 20px;
   background-color: white;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid #dcdfe6;
   display: flex;
-  gap: 12px;
-  align-items: flex-end;
+  gap: 10px;
 }
 
-.chat-input :deep(.el-textarea__inner) {
-  resize: none;
-  padding: 12px;
-  font-size: 14px;
-  line-height: 1.5;
+.input-container .el-input {
+  flex: 1;
 }
 
-.chat-input .el-button {
-  height: 40px;
-  padding: 0 20px;
+.input-container .el-button {
+  align-self: flex-end;
 }
 </style> 

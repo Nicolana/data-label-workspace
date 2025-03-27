@@ -8,6 +8,14 @@
         <div class="list-actions">
           <el-button type="primary" size="small" @click="$emit('create')" :icon="Plus">新增对话</el-button>
           <el-button 
+            type="warning" 
+            size="small" 
+            @click="showGenerateDialog"
+            :icon="Magic"
+          >
+            生成对话
+          </el-button>
+          <el-button 
             type="success" 
             size="small" 
             @click="exportSelected"
@@ -118,26 +126,35 @@
           </div>
         </div>
       </el-scrollbar>
+      <GenerateDialog
+        v-model="generateDialogVisible"
+        @success="handleGenerateSuccess"
+      />
     </div>
   </template>
   
   <script>
   import { ref, watch, computed } from 'vue'
-  import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument } from '@element-plus/icons-vue'
+  import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument, Magic } from '@element-plus/icons-vue'
   import { encoding_for_model } from 'tiktoken'
+  import GenerateDialog from './GenerateDialog.vue'
   
   export default {
+    components: {
+      GenerateDialog
+    },
     props: {
       conversations: {
         type: Array,
         required: true
       }
     },
-    emits: ['select', 'create', 'delete', 'export', 'batch-export', 'copy'],
+    emits: ['select', 'create', 'delete', 'export', 'batch-export', 'copy', 'generate-success'],
     setup(props, { emit }) {
       // 保存本地会话列表副本，带有选中状态
       const localConversations = ref([])
       const selectAll = ref(false)
+      const generateDialogVisible = ref(false)
          
       // 计算选中的ID列表
       const selectedIds = computed(() => {
@@ -224,6 +241,14 @@
         return totalTokens
       }
 
+      const showGenerateDialog = () => {
+        generateDialogVisible.value = true
+      }
+
+      const handleGenerateSuccess = (conversation) => {
+        emit('generate-success', conversation)
+      }
+
       // 监听会话列表变化，创建本地副本
       watch(() => props.conversations, (newVal) => {
         // 保持以前的选中状态
@@ -259,7 +284,11 @@
         Delete,
         Download,
         Plus,
-        CopyDocument
+        CopyDocument,
+        Magic,
+        generateDialogVisible,
+        showGenerateDialog,
+        handleGenerateSuccess
       }
     }
   }

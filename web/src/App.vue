@@ -29,6 +29,7 @@
               @export="handleExportConversation"
               @batch-export="handleBatchExportSelected"
               @copy="handleCopyConversation"
+              @generate-success="handleGenerateSuccess"
             />
           </transition>
         </el-aside>
@@ -288,6 +289,11 @@ export default {
       }
     }
 
+    const handleGenerateSuccess = async (conversation) => {
+      await fetchConversations()
+      selectedConversation.value = conversation
+    }
+
     onMounted(() => {
       fetchConversations()
     })
@@ -307,6 +313,7 @@ export default {
       handleBatchExport,
       handleBatchExportSelected,
       handleCopyConversation,
+      handleGenerateSuccess,
       ChatSquare
     }
   }

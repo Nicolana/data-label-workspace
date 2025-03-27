@@ -57,6 +57,13 @@
               </div>
               <div class="conversation-meta">
                 <el-tag size="small" effect="plain">{{ getMessagesCount(conversation) }}条消息</el-tag>
+                <el-tag 
+                  size="small" 
+                  :type="conversation.token_count > 4000 ? 'danger' : 'success'"
+                  effect="plain"
+                >
+                  {{ conversation.token_count }} tokens
+                </el-tag>
               </div>
             </div>
             <div class="conversation-actions">
@@ -88,6 +95,7 @@
   <script>
   import { ref, watch, computed } from 'vue'
   import { Document, ChatLineRound, Delete, Download, Plus } from '@element-plus/icons-vue'
+  import { encoding_for_model } from 'tiktoken'
   
   export default {
     props: {
@@ -160,6 +168,33 @@
         return conversation.messages ? conversation.messages.length : 0
       }
 
+      // 计算 token 数量
+      const getTokenCount = (conversation) => {
+        if (!conversation.messages) return 0
+        
+        const enc = encoding_for_model('gpt-3.5-turbo')
+        let totalTokens = 0
+        
+        conversation.messages.forEach(message => {
+          // 计算消息内容的 tokens
+          totalTokens += enc.encode(message.content).length
+          
+          // 计算角色名称的 tokens
+          totalTokens += enc.encode(message.role).length
+          
+          // 添加一些系统消息的 tokens
+          if (message.role === 'system') {
+            totalTokens += 4
+          } else if (message.role === 'user') {
+            totalTokens += 4
+          } else if (message.role === 'assistant') {
+            totalTokens += 4
+          }
+        })
+        
+        return totalTokens
+      }
+
       // 监听会话列表变化，创建本地副本
       watch(() => props.conversations, (newVal) => {
         // 保持以前的选中状态
@@ -189,6 +224,7 @@
         handleItemClick,
         exportSelected,
         getMessagesCount,
+        getTokenCount,
         Document,
         ChatLineRound,
         Delete,
@@ -277,6 +313,8 @@
   .conversation-meta {
     font-size: 12px;
     color: #909399;
+    display: flex;
+    gap: 8px;
   }
   .conversation-actions {
     display: flex;

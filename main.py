@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 import sqlite3
 from pathlib import Path
+import tiktoken
 
 app = FastAPI()
 
@@ -37,6 +38,28 @@ def init_db():
 
 init_db()
 
+# 计算 token 数量
+def count_tokens(messages: List[dict]) -> int:
+    enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
+    total_tokens = 0
+    
+    for message in messages:
+        # 计算消息内容的 tokens
+        total_tokens += len(enc.encode(message["content"]))
+        
+        # 计算角色名称的 tokens
+        total_tokens += len(enc.encode(message["role"]))
+        
+        # 添加一些系统消息的 tokens
+        if message["role"] == "system":
+            total_tokens += 4
+        elif message["role"] == "user":
+            total_tokens += 4
+        elif message["role"] == "assistant":
+            total_tokens += 4
+    
+    return total_tokens
+
 # 数据模型
 class Message(BaseModel):
     role: str
@@ -54,9 +77,20 @@ class Conversation(BaseModel):
 def list_conversations():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC")
+        cursor.execute("SELECT id, title, messages, created_at, updated_at FROM conversations ORDER BY updated_at DESC")
         rows = cursor.fetchall()
-        return [{"id": row[0], "title": row[1], "created_at": row[2], "updated_at": row[3]} for row in rows]
+        conversations = []
+        for row in rows:
+            messages = json.loads(row[2])
+            token_count = count_tokens(messages)
+            conversations.append({
+                "id": row[0],
+                "title": row[1],
+                "created_at": row[3],
+                "updated_at": row[4],
+                "token_count": token_count
+            })
+        return conversations
 
 @app.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: int):
@@ -68,12 +102,14 @@ def get_conversation(conversation_id: int):
             raise HTTPException(status_code=404, detail="Conversation not found")
         
         messages = json.loads(row[2])
+        token_count = count_tokens(messages)
         return {
             "id": row[0],
             "title": row[1],
             "messages": messages,
             "created_at": row[3],
-            "updated_at": row[4]
+            "updated_at": row[4],
+            "token_count": token_count
         }
 
 @app.post("/conversations")

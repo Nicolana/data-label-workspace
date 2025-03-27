@@ -20,6 +20,9 @@ dependencies:
   element-plus:
     specifier: ^2.9.7
     version: 2.9.7(vue@3.5.13)
+  marked:
+    specifier: ^11.0.0
+    version: 11.0.0
   md-editor-v3:
     specifier: ^5.4.5
     version: 5.4.5(vue@3.5.13)
@@ -29,6 +32,9 @@ dependencies:
   vue:
     specifier: ^3.5.13
     version: 3.5.13
+  vue-router:
+    specifier: ^4.2.5
+    version: 4.2.5(vue@3.5.13)
 
 devDependencies:
   '@vitejs/plugin-vue':
@@ -1011,6 +1017,10 @@ packages:
       '@vue/compiler-dom': 3.5.13
       '@vue/shared': 3.5.13
 
+  /@vue/devtools-api@6.6.4:
+    resolution: {integrity: sha512-sGhTPMuXqZ1rVOk32RylztWkfXTRhuS7vgAKv0zjqk8gbsHkJ7xfFf+jbySxt7tWObEJwyKaHMikV/WGDiQm8g==}
+    dev: false
+
   /@vue/reactivity@3.5.13:
     resolution: {integrity: sha512-NaCwtw8o48B9I6L1zl2p41OHo/2Z4wqYGGIK1Khu5T7yxrn+ATOixn/Udn2m+6kZKB/J7cuT9DbWWhRxqixACg==}
     dependencies:
@@ -1551,6 +1561,12 @@ packages:
       uc.micro: 2.1.0
     dev: false
 
+  /marked@11.0.0:
+    resolution: {integrity: sha512-2GsW34uXaFEGTQ/+3rCnNC6vUYTAgFuDLGl70v/aWinA5mIJtTrrFAmfbLOfVvgPyxXuDVL9He/7reCK+6j3Sw==}
+    engines: {node: '>= 18'}
+    hasBin: true
+    dev: false
+
   /math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
@@ -1819,6 +1835,15 @@ packages:
       '@vue/composition-api':
         optional: true
     dependencies:
+      vue: 3.5.13
+    dev: false
+
+  /vue-router@4.2.5(vue@3.5.13):
+    resolution: {integrity: sha512-DIUpKcyg4+PTQKfFPX88UWhlagBEBEfJ5A8XDXRJLUnZOvcpMF8o/dnL90vpVkGaPbjvXazV/rC1qBKrZlFugw==}
+    peerDependencies:
+      vue: ^3.2.0
+    dependencies:
+      '@vue/devtools-api': 6.6.4
       vue: 3.5.13
     dev: false
 

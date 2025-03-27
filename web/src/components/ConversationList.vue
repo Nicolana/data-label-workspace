@@ -50,50 +50,54 @@
                 @click.stop
               ></el-checkbox>
             </div>
-            <div class="conversation-info" @click.stop="$emit('select', conversation.id)">
-              <div class="conversation-title">
-                <el-icon><Document /></el-icon>
-                {{ conversation.title }}
+            <div class="conversation-content">
+              <div class="conversation-info" @click.stop="$emit('select', conversation.id)">
+                <div class="conversation-title">
+                  <el-icon><Document /></el-icon>
+                  {{ conversation.title }}
+                </div>
+                <div class="conversation-footer">
+                  <div class="conversation-meta">
+                    <el-tag size="small" effect="plain">{{ conversation.message_count }}条消息</el-tag>
+                    <el-tag 
+                      size="small" 
+                      :type="conversation.token_count > 4000 ? 'danger' : 'success'"
+                      effect="plain"
+                    >
+                      {{ conversation.token_count }} tokens
+                    </el-tag>
+                  </div>
+                  <div class="conversation-actions">
+                    <el-tooltip content="复制对话" placement="top">
+                      <el-button 
+                        type="primary" 
+                        size="small" 
+                        @click.stop="$emit('copy', conversation.id)"
+                        :icon="CopyDocument"
+                        circle
+                      ></el-button>
+                    </el-tooltip>
+                    <el-tooltip content="导出对话" placement="top">
+                      <el-button 
+                        type="success" 
+                        size="small" 
+                        @click.stop="$emit('export', conversation.id)"
+                        :icon="Download"
+                        circle
+                      ></el-button>
+                    </el-tooltip>
+                    <el-tooltip content="删除对话" placement="top">
+                      <el-button 
+                        type="danger" 
+                        size="small" 
+                        @click.stop="$emit('delete', conversation.id)"
+                        :icon="Delete"
+                        circle
+                      ></el-button>
+                    </el-tooltip>
+                  </div>
+                </div>
               </div>
-              <div class="conversation-meta">
-                <el-tag size="small" effect="plain">{{ conversation.message_count }}条消息</el-tag>
-                <el-tag 
-                  size="small" 
-                  :type="conversation.token_count > 4000 ? 'danger' : 'success'"
-                  effect="plain"
-                >
-                  {{ conversation.token_count }} tokens
-                </el-tag>
-              </div>
-            </div>
-            <div class="conversation-actions">
-              <el-tooltip content="复制对话" placement="top">
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  @click.stop="$emit('copy', conversation.id)"
-                  :icon="CopyDocument"
-                  circle
-                ></el-button>
-              </el-tooltip>
-              <el-tooltip content="导出对话" placement="top">
-                <el-button 
-                  type="success" 
-                  size="small" 
-                  @click.stop="$emit('export', conversation.id)"
-                  :icon="Download"
-                  circle
-                ></el-button>
-              </el-tooltip>
-              <el-tooltip content="删除对话" placement="top">
-                <el-button 
-                  type="danger" 
-                  size="small" 
-                  @click.stop="$emit('delete', conversation.id)"
-                  :icon="Delete"
-                  circle
-                ></el-button>
-              </el-tooltip>
             </div>
           </div>
         </div>
@@ -285,7 +289,7 @@
   }
   .conversation-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 12px 15px;
     border-radius: 8px;
     background-color: #fff;
@@ -295,7 +299,6 @@
   }
   .conversation-item:hover {
     background-color: #f5f7fa;
-    transform: translateY(-2px);
     box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   }
   .conversation-selected {
@@ -304,6 +307,10 @@
   }
   .conversation-checkbox {
     margin-right: 10px;
+  }
+  .conversation-content {
+    flex: 1;
+    margin-left: 10px;
   }
   .conversation-info {
     flex: 1;
@@ -315,10 +322,16 @@
     align-items: center;
     gap: 5px;
     font-weight: 500;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 14px;
+  }
+  .conversation-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
   .conversation-meta {
     font-size: 12px;
@@ -328,10 +341,11 @@
   }
   .conversation-actions {
     display: flex;
-    gap: 5px;
-    margin-left: 10px;
     opacity: 0.5;
     transition: opacity 0.2s;
+    .el-button+.el-button {
+      margin-left: 4px;
+    }
   }
   .conversation-item:hover .conversation-actions {
     opacity: 1;

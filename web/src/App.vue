@@ -120,7 +120,7 @@ export default {
       editingConversation.value = {
         title: '',
         messages: [
-          { role: 'system', content: '' },
+          { role: 'system', content: '你是Spotter Gmesh项目的一个前端开发辅助，你会接收用户给出的任务，来帮助他完成代码编写' },
           { role: 'user', content: '' },
           { role: 'assistant', content: '' }
         ]

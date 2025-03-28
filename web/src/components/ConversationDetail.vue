@@ -21,7 +21,7 @@
             </div>
             <div class="message-bubble">
               <div class="message-content">
-                <MdPreview :modelValue="message.content" :previewTheme="vuepress" :codeFoldable="false"  />
+                <MdPreview :modelValue="message.content" previewTheme="vuepress" :codeFoldable="false"  />
               </div>
             </div>
           </div>

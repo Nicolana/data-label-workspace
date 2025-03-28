@@ -56,7 +56,7 @@
         </div>
       </div>
       
-      <el-scrollbar height="calc(100vh - 155px)">
+      <el-scrollbar height="calc(100vh - 138px - 60px)">
         <div class="conversation-items">
           <div 
             v-for="conversation in localConversations" 

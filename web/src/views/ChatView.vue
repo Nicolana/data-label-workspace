@@ -20,12 +20,23 @@
             <span class="chat-title">{{ chat.title }}</span>
           </div>
           <div class="chat-item-actions">
+            <el-tooltip content="保存为训练数据" placement="top">
+              <el-button
+                type="text"
+                size="small"
+                :icon="DocumentAdd"
+                class="chat-item-action-button"
+                @click.stop="handleSaveAsTraining(chat)"
+              >
+              </el-button>
+            </el-tooltip>
             <el-button
               type="text"
               size="small"
+              :icon="Delete"
+              class="chat-item-action-button"
               @click.stop="handleDeleteChat(chat)"
             >
-              <el-icon><Delete /></el-icon>
             </el-button>
           </div>
         </div>
@@ -90,8 +101,8 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Plus, ChatDotRound, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, ChatDotRound, Delete, DocumentAdd } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
 import axios from 'axios'
@@ -158,6 +169,29 @@ const handleDeleteChat = async (chat) => {
     ElMessage.success('删除成功')
   } catch (error) {
     ElMessage.error('删除对话失败')
+  }
+}
+
+// 保存为训练数据对话
+const handleSaveAsTraining = async (chat) => {
+  try {
+    // 获取完整的对话消息
+    const response = await axios.get(`/api/chat-messages/${chat.id}`)
+    const messages = response.data
+
+    // 创建训练数据对话
+    await axios.post('/api/conversations', {
+      title: `训练数据 - ${chat.title}`,
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+    })
+
+    ElMessage.success('已保存为训练数据对话')
+  } catch (error) {
+    console.error('保存训练数据失败:', error)
+    ElMessage.error('保存训练数据失败')
   }
 }
 
@@ -338,6 +372,15 @@ onMounted(() => {
 .chat-item-actions {
   opacity: 0;
   transition: opacity 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+
+.chat-item-action-button {
+  margin-left: 0!important;
+  padding: 0!important;
 }
 
 .chat-item:hover .chat-item-actions {

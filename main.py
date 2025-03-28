@@ -18,6 +18,9 @@ import io
 import pickle
 from sentence_transformers import SentenceTransformer
 import torch
+from contextlib import contextmanager
+from queue import Queue
+from threading import Lock
 
 # 加载环境变量
 load_dotenv()
@@ -40,6 +43,41 @@ app.add_middleware(
 
 # 数据库初始化
 DB_FILE = "conversations.db"
+MAX_CONNECTIONS = 5
+connection_pool = Queue(maxsize=MAX_CONNECTIONS)
+init_lock = Lock()
+
+def init_connection_pool():
+    """初始化连接池"""
+    with init_lock:
+        if connection_pool.empty():
+            for _ in range(MAX_CONNECTIONS):
+                conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.row_factory = sqlite3.Row
+                connection_pool.put(conn)
+
+@contextmanager
+def get_db_connection():
+    """获取数据库连接的上下文管理器"""
+    init_connection_pool()
+    conn = connection_pool.get()
+    try:
+        yield conn
+    finally:
+        connection_pool.put(conn)
+
+@contextmanager
+def get_db_cursor():
+    """获取数据库游标的上下文管理器"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            yield cursor
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
 
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
@@ -596,8 +634,7 @@ class ChatMessage(BaseModel):
 async def create_chat_message(message: ChatMessage):
     now = datetime.now().isoformat()
     
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute(
             "INSERT INTO chat_messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
             (message.conversation_id, message.role, message.content, now)
@@ -610,7 +647,6 @@ async def create_chat_message(message: ChatMessage):
             (now, message.conversation_id)
         )
         
-        conn.commit()
     
     return {
         "id": message_id,
@@ -671,11 +707,8 @@ def create_faiss_index(embeddings: List[np.ndarray]) -> faiss.IndexFlatL2:
         index.add(np.vstack(embeddings))
     return index
 
-def save_faiss_index(index: faiss.Index, db_path: str, index_id: int):
+def save_faiss_index(index: faiss.Index, cursor: sqlite3.Cursor, index_id: int):
     """保存 FAISS 索引到数据库"""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
     # 序列化索引
     index_bytes = pickle.dumps(index)
     
@@ -685,63 +718,55 @@ def save_faiss_index(index: faiss.Index, db_path: str, index_id: int):
     VALUES (?, ?, CURRENT_TIMESTAMP)
     ''', (index_id, index_bytes))
     
-    conn.commit()
-    conn.close()
 
 def load_faiss_index(db_path: str, index_id: int) -> Optional[faiss.IndexFlatL2]:
     """从数据库加载 FAISS 索引"""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    with get_db_cursor() as cursor:
+        
+        cursor.execute('SELECT faiss_index FROM vector_indices WHERE index_id = ?', (index_id,))
+        result = cursor.fetchone()
     
-    cursor.execute('SELECT faiss_index FROM vector_indices WHERE index_id = ?', (index_id,))
-    result = cursor.fetchone()
-    
-    conn.close()
-    
-    if result:
-        return pickle.loads(result[0])
-    return None
+        if result:
+            return pickle.loads(result[0])
+        return None
 
 def search_similar_documents(query: str, index_id: int, k: int = 5) -> List[Dict[str, Any]]:
     """搜索相似文档"""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    # 加载 FAISS 索引
-    faiss_index = load_faiss_index(DB_FILE, index_id)
-    if not faiss_index:
-        return []
-    
-    # 获取查询向量
-    query_vector = get_embedding(query)
-    
-    # 搜索相似向量
-    distances, indices = faiss_index.search(query_vector.reshape(1, -1), k)
-    
-    # 获取文档内容
-    results = []
-    for i, idx in enumerate(indices[0]):
-        if idx < 0:  # FAISS 返回 -1 表示没有足够的结果
-            continue
-            
-        cursor.execute('''
-        SELECT id, content, metadata, created_at
-        FROM documents
-        WHERE index_id = ? AND id = ?
-        ''', (index_id, idx))
+    with get_db_cursor() as cursor:
+        # 加载 FAISS 索引
+        faiss_index = load_faiss_index(DB_FILE, index_id)
+        if not faiss_index:
+            return []
         
-        doc = cursor.fetchone()
-        if doc:
-            results.append({
-                'id': doc[0],
-                'content': doc[1],
-                'metadata': json.loads(doc[2]) if doc[2] else {},
-                'created_at': doc[3],
-                'similarity': float(1 / (1 + distances[0][i]))  # 转换距离为相似度
-            })
-    
-    conn.close()
-    return results
+        # 获取查询向量
+        query_vector = get_embedding(query)
+        
+        # 搜索相似向量
+        distances, indices = faiss_index.search(query_vector.reshape(1, -1), k)
+        
+        # 获取文档内容
+        results = []
+        for i, idx in enumerate(indices[0]):
+            if idx < 0:  # FAISS 返回 -1 表示没有足够的结果
+                continue
+                
+            cursor.execute('''
+            SELECT id, content, metadata, created_at
+            FROM documents
+            WHERE index_id = ? AND id = ?
+            ''', (index_id, idx))
+            
+            doc = cursor.fetchone()
+            if doc:
+                results.append({
+                    'id': doc[0],
+                    'content': doc[1],
+                    'metadata': json.loads(doc[2]) if doc[2] else {},
+                    'created_at': doc[3],
+                    'similarity': float(1 / (1 + distances[0][i]))  # 转换距离为相似度
+                })
+        
+        return results
 
 # 索引管理相关的 Pydantic 模型
 class IndexCreate(BaseModel):
@@ -774,10 +799,7 @@ class Index(BaseModel):
 # 索引管理 API 端点
 @app.post("/indices", response_model=Index)
 async def create_index(index: IndexCreate):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    try:
+    with get_db_cursor() as cursor:
         cursor.execute('''
         INSERT INTO indices (name, description)
         VALUES (?, ?)
@@ -787,10 +809,10 @@ async def create_index(index: IndexCreate):
         
         # 创建空的 FAISS 索引
         faiss_index = create_faiss_index([])
-        save_faiss_index(faiss_index, DB_FILE, index_id)
+        save_faiss_index(faiss_index, cursor, index_id)
         
-        conn.commit()
-        
+        # conn.commit()
+
         return {
             "id": index_id,
             "name": index.name,
@@ -798,10 +820,7 @@ async def create_index(index: IndexCreate):
             "created_at": datetime.now(),
             "document_count": 0
         }
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="索引名称已存在")
-    finally:
-        conn.close()
+ 
 
 @app.get("/indices", response_model=List[Index])
 async def list_indices():

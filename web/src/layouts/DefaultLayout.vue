@@ -16,7 +16,14 @@
           active-text-color="#fff"
         >
           <el-menu-item index="/">对话管理</el-menu-item>
-          <el-menu-item index="/chat">AI 助手</el-menu-item>
+          <el-menu-item index="/chat">
+            <el-icon><ChatDotRound /></el-icon>
+            <span>AI 助手</span>
+          </el-menu-item>
+          <el-menu-item index="/indices">
+            <el-icon><Files /></el-icon>
+            <span>索引管理</span>
+          </el-menu-item>
         </el-menu>
       </el-header>
       <el-container class="main-container">
@@ -31,14 +38,16 @@
 </template>
 
 <script>
-import { ChatSquare } from '@element-plus/icons-vue'
+import { ChatSquare, ChatDotRound, Files } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 
 export default {
   name: 'DefaultLayout',
   components: {
-    ChatSquare
+    ChatSquare,
+    ChatDotRound,
+    Files
   },
   props: {
     showSidebar: {

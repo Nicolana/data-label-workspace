@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import json
 from datetime import datetime
 import sqlite3
@@ -11,6 +11,13 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from fastapi.responses import StreamingResponse
+import numpy as np
+import faiss
+import openai
+import io
+import pickle
+from sentence_transformers import SentenceTransformer
+import torch
 
 # 加载环境变量
 load_dotenv()
@@ -79,6 +86,42 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at 
         ON chat_messages (created_at)
         """)
+        
+        # 创建索引表
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS indices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # 创建文档表
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            index_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            metadata TEXT,
+            embedding BLOB,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (index_id) REFERENCES indices (id) ON DELETE CASCADE
+        )
+        ''')
+        
+        # 创建向量索引表
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vector_indices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            index_id INTEGER NOT NULL UNIQUE,
+            faiss_index BLOB,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (index_id) REFERENCES indices (id) ON DELETE CASCADE
+        )
+        ''')
         
         conn.commit()
 
@@ -343,21 +386,76 @@ def copy_conversation(conversation_id: int):
             "message_count": len(messages)
         }
 
+# @app.post("/complete")
+# async def complete(request: Request):
+#     try:
+#         data = await request.json()
+#         messages = data.get("messages", [])
+        
+#         if not messages:
+#             raise HTTPException(status_code=400, detail="消息不能为空")
+            
+#         # 调用 OpenAI API
+#         async def event_generator():
+#             async for chunk in call_openai(messages, stream=True):
+#                 yield chunk
+        
+#         # 返回流式响应
+#         return StreamingResponse(
+#             event_generator(),
+#             media_type="text/event-stream",
+#             headers={
+#                 "Cache-Control": "no-cache",
+#                 "Connection": "keep-alive",
+#             }
+#         )
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
+# 修改 complete 路由以支持 RAG
 @app.post("/complete")
 async def complete(request: Request):
     try:
         data = await request.json()
         messages = data.get("messages", [])
+        index_id = data.get("index_id")  # 可选的索引 ID
         
-        if not messages:
-            raise HTTPException(status_code=400, detail="消息不能为空")
-            
+        # 获取最后一条用户消息
+        user_message = next((msg["content"] for msg in reversed(messages) 
+                           if msg["role"] == "user"), None)
+        
+        if not user_message:
+            raise HTTPException(status_code=400, detail="没有找到用户消息")
+        
+        # 如果指定了索引，进行相似文档检索
+        context = ""
+        if index_id:
+            similar_docs = search_similar_documents(user_message, index_id)
+            if similar_docs:
+                context = "相关文档内容：\n" + "\n".join(
+                    f"- {doc['content']} (相似度: {doc['similarity']:.2f})"
+                    for doc in similar_docs
+                )
+        
+        # 构建系统提示
+        system_prompt = """你是一个有帮助的 AI 助手。请基于以下信息回答问题：
+1. 如果提供了相关文档内容，请优先使用这些信息
+2. 如果相关文档内容不足，可以使用你的通用知识
+3. 请明确标注信息来源（是来自相关文档还是通用知识）
+4. 如果信息不足，请明确说明
+
+"""
+        
+        # 添加上下文到消息列表
+        if context:
+            messages.insert(0, {"role": "system", "content": system_prompt + context})
+        
         # 调用 OpenAI API
         async def event_generator():
             async for chunk in call_openai(messages, stream=True):
                 yield chunk
         
-        # 返回流式响应
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
@@ -551,6 +649,317 @@ def delete_chat_messages(conversation_id: int):
         conn.commit()
     
     return {"message": "Chat messages deleted successfully"}
+
+# 初始化 sentence transformer 模型
+model = SentenceTransformer('all-MiniLM-L6-v2')
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model.to(device)
+
+# 向量维度
+VECTOR_DIM = 384
+
+def get_embedding(text: str) -> np.ndarray:
+    """获取文本的向量表示"""
+    with torch.no_grad():
+        embedding = model.encode(text, convert_to_numpy=True)
+    return embedding.astype(np.float32)
+
+def create_faiss_index(embeddings: List[np.ndarray]) -> faiss.IndexFlatL2:
+    """创建 FAISS 索引"""
+    index = faiss.IndexFlatL2(VECTOR_DIM)
+    if embeddings:
+        index.add(np.vstack(embeddings))
+    return index
+
+def save_faiss_index(index: faiss.Index, db_path: str, index_id: int):
+    """保存 FAISS 索引到数据库"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # 序列化索引
+    index_bytes = pickle.dumps(index)
+    
+    # 更新或插入向量索引
+    cursor.execute('''
+    INSERT OR REPLACE INTO vector_indices (index_id, faiss_index, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ''', (index_id, index_bytes))
+    
+    conn.commit()
+    conn.close()
+
+def load_faiss_index(db_path: str, index_id: int) -> Optional[faiss.IndexFlatL2]:
+    """从数据库加载 FAISS 索引"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT faiss_index FROM vector_indices WHERE index_id = ?', (index_id,))
+    result = cursor.fetchone()
+    
+    conn.close()
+    
+    if result:
+        return pickle.loads(result[0])
+    return None
+
+def search_similar_documents(query: str, index_id: int, k: int = 5) -> List[Dict[str, Any]]:
+    """搜索相似文档"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # 加载 FAISS 索引
+    faiss_index = load_faiss_index(DB_FILE, index_id)
+    if not faiss_index:
+        return []
+    
+    # 获取查询向量
+    query_vector = get_embedding(query)
+    
+    # 搜索相似向量
+    distances, indices = faiss_index.search(query_vector.reshape(1, -1), k)
+    
+    # 获取文档内容
+    results = []
+    for i, idx in enumerate(indices[0]):
+        if idx < 0:  # FAISS 返回 -1 表示没有足够的结果
+            continue
+            
+        cursor.execute('''
+        SELECT id, content, metadata, created_at
+        FROM documents
+        WHERE index_id = ? AND id = ?
+        ''', (index_id, idx))
+        
+        doc = cursor.fetchone()
+        if doc:
+            results.append({
+                'id': doc[0],
+                'content': doc[1],
+                'metadata': json.loads(doc[2]) if doc[2] else {},
+                'created_at': doc[3],
+                'similarity': float(1 / (1 + distances[0][i]))  # 转换距离为相似度
+            })
+    
+    conn.close()
+    return results
+
+# 索引管理相关的 Pydantic 模型
+class IndexCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class DocumentCreate(BaseModel):
+    content: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class Document(BaseModel):
+    id: int
+    content: str
+    metadata: Optional[Dict[str, Any]]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class Index(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    created_at: datetime
+    document_count: int
+
+    class Config:
+        from_attributes = True
+
+# 索引管理 API 端点
+@app.post("/indices", response_model=Index)
+async def create_index(index: IndexCreate):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+        INSERT INTO indices (name, description)
+        VALUES (?, ?)
+        ''', (index.name, index.description))
+        
+        index_id = cursor.lastrowid
+        
+        # 创建空的 FAISS 索引
+        faiss_index = create_faiss_index([])
+        save_faiss_index(faiss_index, DB_FILE, index_id)
+        
+        conn.commit()
+        
+        return {
+            "id": index_id,
+            "name": index.name,
+            "description": index.description,
+            "created_at": datetime.now(),
+            "document_count": 0
+        }
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="索引名称已存在")
+    finally:
+        conn.close()
+
+@app.get("/indices", response_model=List[Index])
+async def list_indices():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT i.id, i.name, i.description, i.created_at, COUNT(d.id) as document_count
+    FROM indices i
+    LEFT JOIN documents d ON i.id = d.index_id
+    GROUP BY i.id
+    ORDER BY i.created_at DESC
+    ''')
+    
+    indices = []
+    for row in cursor.fetchall():
+        indices.append({
+            "id": row[0],
+            "name": row[1],
+            "description": row[2],
+            "created_at": row[3],
+            "document_count": row[4]
+        })
+    
+    conn.close()
+    return indices
+
+@app.delete("/indices/{index_id}")
+async def delete_index(index_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('DELETE FROM indices WHERE id = ?', (index_id,))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="索引不存在")
+    
+    conn.commit()
+    conn.close()
+    return {"message": "索引删除成功"}
+
+@app.post("/indices/{index_id}/documents", response_model=Document)
+async def add_document(index_id: int, document: DocumentCreate):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    try:
+        # 检查索引是否存在
+        cursor.execute('SELECT id FROM indices WHERE id = ?', (index_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="索引不存在")
+        
+        # 获取文档向量
+        embedding = get_embedding(document.content)
+        
+        # 插入文档
+        cursor.execute('''
+        INSERT INTO documents (index_id, content, metadata, embedding)
+        VALUES (?, ?, ?, ?)
+        ''', (index_id, document.content, json.dumps(document.metadata), embedding.tobytes()))
+        
+        doc_id = cursor.lastrowid
+        
+        # 更新 FAISS 索引
+        faiss_index = load_faiss_index(DB_FILE, index_id)
+        faiss_index.add(embedding.reshape(1, -1))
+        save_faiss_index(faiss_index, DB_FILE, index_id)
+        
+        conn.commit()
+        
+        return {
+            "id": doc_id,
+            "content": document.content,
+            "metadata": document.metadata,
+            "created_at": datetime.now()
+        }
+    finally:
+        conn.close()
+
+@app.get("/indices/{index_id}/documents", response_model=List[Document])
+async def list_documents(index_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT id, content, metadata, created_at
+    FROM documents
+    WHERE index_id = ?
+    ORDER BY created_at DESC
+    ''', (index_id,))
+    
+    documents = []
+    for row in cursor.fetchall():
+        documents.append({
+            "id": row[0],
+            "content": row[1],
+            "metadata": json.loads(row[2]) if row[2] else None,
+            "created_at": row[3]
+        })
+    
+    conn.close()
+    return documents
+
+@app.delete("/indices/{index_id}/documents/{document_id}")
+async def delete_document(index_id: int, document_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    try:
+        # 获取文档向量
+        cursor.execute('SELECT embedding FROM documents WHERE id = ? AND index_id = ?', 
+                      (document_id, index_id))
+        result = cursor.fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        
+        embedding = np.frombuffer(result[0], dtype=np.float32)
+        
+        # 删除文档
+        cursor.execute('DELETE FROM documents WHERE id = ? AND index_id = ?', 
+                      (document_id, index_id))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        
+        # 更新 FAISS 索引
+        faiss_index = load_faiss_index(DB_FILE, index_id)
+        faiss_index.remove_ids(np.array([document_id]))
+        save_faiss_index(faiss_index, DB_FILE, index_id)
+        
+        conn.commit()
+        return {"message": "文档删除成功"}
+    finally:
+        conn.close()
+
+@app.post("/indices/{index_id}/rebuild")
+async def rebuild_index(index_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    try:
+        # 获取所有文档向量
+        cursor.execute('SELECT embedding FROM documents WHERE index_id = ?', (index_id,))
+        embeddings = []
+        for row in cursor.fetchall():
+            embedding = np.frombuffer(row[0], dtype=np.float32)
+            embeddings.append(embedding)
+        
+        # 创建新的 FAISS 索引
+        if embeddings:
+            faiss_index = create_faiss_index(embeddings)
+            save_faiss_index(faiss_index, DB_FILE, index_id)
+        
+        return {"message": "索引重建成功"}
+    finally:
+        conn.close()
+
 
 if __name__ == "__main__":
     import uvicorn

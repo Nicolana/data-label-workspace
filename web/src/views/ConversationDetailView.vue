@@ -58,8 +58,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, User, Service, ChatDotRound, EditPen, Download, Delete, ArrowLeft } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
-import axios from 'axios'
 import ConversationForm from '../components/ConversationForm.vue'
+import { conversationApi } from '../api/conversation'
 
 const route = useRoute()
 const router = useRouter()
@@ -70,7 +70,7 @@ const editingConversation = ref(null)
 // 获取对话详情
 const fetchConversation = async () => {
   try {
-    const response = await axios.get(`/api/conversations/${route.params.id}`)
+    const response = await conversationApi.getConversation(route.params.id)
     conversation.value = response.data
     console.log("conversation = ", conversation.value)
   } catch (error) {
@@ -89,7 +89,7 @@ const handleEdit = () => {
 // 导出对话
 const handleExport = async () => {
   try {
-    const response = await axios.get(`/api/conversations/${route.params.id}/export`)
+    const response = await conversationApi.getConversation(route.params.id)
     const data = response.data
     const jsonlContent = JSON.stringify(data)
     downloadAsFile(jsonlContent, `conversation_${route.params.id}.jsonl`)
@@ -109,7 +109,7 @@ const handleDelete = async () => {
       type: 'warning'
     })
     
-    await axios.delete(`/api/conversations/${route.params.id}`)
+    await conversationApi.deleteConversation(route.params.id)
     ElMessage.success('对话已删除')
     router.push('/')
   } catch (error) {
@@ -123,7 +123,7 @@ const handleDelete = async () => {
 // 表单提交
 const handleFormSubmit = async (formData) => {
   try {
-    await axios.put(`/api/conversations/${formData.id}`, formData)
+    await conversationApi.updateConversation(formData.id, formData)
     ElMessage.success('对话已更新')
     dialogVisible.value = false
     await fetchConversation()

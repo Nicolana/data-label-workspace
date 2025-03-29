@@ -42,10 +42,9 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import axios from 'axios'
 import ConversationList from '../components/ConversationList.vue'
 import ConversationForm from '../components/ConversationForm.vue'
-
+import { conversationApi } from '../api/conversation'
 const router = useRouter()
 const conversations = ref([])
 const dialogVisible = ref(false)
@@ -55,7 +54,7 @@ const isEditing = ref(false)
 
 const fetchConversations = async () => {
   try {
-    const response = await axios.get('/api/conversations')
+    const response = await conversationApi.getConversations()
     conversations.value = response.data
   } catch (error) {
     console.error('获取对话列表失败:', error)
@@ -84,10 +83,10 @@ const showCreateDialog = () => {
 const handleFormSubmit = async (formData) => {
   try {
     if (isEditing.value) {
-      await axios.put(`/api/conversations/${formData.id}`, formData)
+      await conversationApi.updateConversation(formData.id, formData)
       ElMessage.success('对话已更新')
     } else {
-      await axios.post('/api/conversations', formData)
+      await conversationApi.createConversation(formData)
       ElMessage.success('对话已创建')
     }
     dialogVisible.value = false
@@ -106,7 +105,7 @@ const handleDeleteConversation = async (id) => {
       type: 'warning'
     })
     
-    await axios.delete(`/api/conversations/${id}`)
+    await conversationApi.deleteConversation(id)
     ElMessage.success('对话已删除')
     await fetchConversations()
   } catch (error) {
@@ -119,7 +118,7 @@ const handleDeleteConversation = async (id) => {
 
 const handleExportConversation = async (id) => {
   try {
-    const response = await axios.get(`/api/conversations/${id}/export`)
+    const response = await conversationApi.getConversation(id)
     const data = response.data
     const jsonlContent = JSON.stringify(data)
     downloadAsFile(jsonlContent, `conversation_${id}.jsonl`)
@@ -152,7 +151,7 @@ const exportMultipleConversations = async (ids) => {
     })
     
     const exportPromises = ids.map(id => 
-      axios.get(`/api/conversations/${id}/export`)
+      conversationApi.getConversation(id)
     )
     
     const responses = await Promise.all(exportPromises)
@@ -181,7 +180,7 @@ const downloadAsFile = (content, filename) => {
 
 const handleCopyConversation = async (conversationId) => {
   try {
-    await axios.post(`/api/conversations/${conversationId}/copy`)
+    await conversationApi.copyConversation(conversationId)
     await fetchConversations()
     ElMessage.success('对话复制成功')
   } catch (error) {

@@ -104,7 +104,8 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
-import axios from 'axios'
+import { indexApi } from '../api/index'
+
 
 // 状态
 const indexList = ref([])
@@ -127,7 +128,7 @@ const documentForm = ref({
 // 获取索引列表
 const fetchIndexList = async () => {
   try {
-    const response = await axios.get('/api/indices')
+    const response = await indexApi.getIndices()
     indexList.value = response.data
   } catch (error) {
     ElMessage.error('获取索引列表失败')
@@ -145,7 +146,7 @@ const handleCreateIndex = () => {
 
 const submitCreateIndex = async () => {
   try {
-    await axios.post('/api/indices', indexForm.value)
+    await indexApi.createIndex(indexForm.value)
     ElMessage.success('索引创建成功')
     createDialogVisible.value = false
     await fetchIndexList()
@@ -173,7 +174,7 @@ const submitAddDocument = async () => {
       metadata = {}
     }
 
-    await axios.post(`/api/indices/${currentIndex.value.id}/documents`, {
+    await indexApi.createDocument(currentIndex.value.id, {
       content: documentForm.value.content,
       metadata
     })
@@ -188,7 +189,7 @@ const submitAddDocument = async () => {
 const handleViewDocuments = async (index) => {
   currentIndex.value = index
   try {
-    const response = await axios.get(`/api/indices/${index.id}/documents`)
+    const response = await indexApi.getDocuments(index.id)
     documents.value = response.data
     viewDocDialogVisible.value = true
   } catch (error) {
@@ -205,7 +206,7 @@ const handleDeleteDocument = async (document) => {
       type: 'warning'
     })
     
-    await axios.delete(`/api/indices/${currentIndex.value.id}/documents/${document.id}`)
+    await indexApi.deleteDocument(currentIndex.value.id, document.id)
     ElMessage.success('文档删除成功')
     await handleViewDocuments(currentIndex.value)
   } catch (error) {
@@ -224,7 +225,7 @@ const handleRebuildIndex = async (index) => {
       type: 'warning'
     })
     
-    await axios.post(`/api/indices/${index.id}/rebuild`)
+    await indexApi.rebuildIndex(index.id)
     ElMessage.success('索引重建成功')
   } catch (error) {
     if (error !== 'cancel') {
@@ -242,7 +243,7 @@ const handleDeleteIndex = async (index) => {
       type: 'warning'
     })
     
-    await axios.delete(`/api/indices/${index.id}`)
+    await indexApi.deleteIndex(index.id)
     ElMessage.success('索引删除成功')
     await fetchIndexList()
   } catch (error) {

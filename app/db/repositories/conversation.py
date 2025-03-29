@@ -72,6 +72,46 @@ class ConversationRepository:
         with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
             return cursor.rowcount > 0
+        
+    @staticmethod
+    def copy(conversation_id: int) -> Optional[Conversation]:
+        with get_db_cursor() as cursor:
+            # 获取原始对话
+            cursor.execute(
+                "SELECT title, messages FROM conversations WHERE id = ?", 
+                (conversation_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            # 创建新标题
+            original_title = row[0]
+            new_title = f"{original_title} (副本)"
+            
+            # 插入新对话
+            now = datetime.now().isoformat()
+            cursor.execute(
+                "INSERT INTO conversations (title, messages, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (new_title, row[1], now, now)
+            )
+            new_id = cursor.lastrowid
+            
+            # 获取新对话的完整信息
+            cursor.execute(
+                "SELECT id, title, messages, created_at, updated_at FROM conversations WHERE id = ?", 
+                (new_id,)
+            )
+            new_row = cursor.fetchone()
+            messages = [Message(**msg) for msg in json.loads(new_row[2])]
+            
+            return Conversation(
+                id=new_row[0],
+                title=new_row[1],
+                messages=messages,
+                created_at=new_row[3],
+                updated_at=new_row[4]
+            )
 
 class ChatConversationRepository:
     @staticmethod

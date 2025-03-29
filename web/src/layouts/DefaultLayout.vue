@@ -40,7 +40,7 @@
 <script>
 import { ChatSquare, ChatDotRound, Files } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import axios from 'axios'
+import { conversationApi } from '../api/conversation'
 
 export default {
   name: 'DefaultLayout',
@@ -66,7 +66,7 @@ export default {
           type: 'info'
         })
         
-        const response = await axios.get(`${API_URL}/conversations`)
+        const response = await conversationApi.getConversations()
         const conversations = response.data
         
         if (conversations.length === 0) {
@@ -92,7 +92,7 @@ export default {
         })
         
         const exportPromises = ids.map(id => 
-          axios.get(`${API_URL}/conversations/${id}/export`)
+          conversationApi.getConversation(id)
         )
         
         const responses = await Promise.all(exportPromises)

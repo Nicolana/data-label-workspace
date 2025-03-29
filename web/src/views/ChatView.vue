@@ -101,11 +101,13 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Delete, DocumentAdd } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
-import axios from 'axios'
+import { chatConversationApi } from '../api/conversation'
+import { chatMessageApi } from '../api/chat'
+import { conversationApi } from '../api/conversation'
 
 // 状态
 const chatList = ref([])
@@ -118,7 +120,7 @@ const messageList = ref(null)
 // 获取聊天列表
 const fetchChatList = async () => {
   try {
-    const response = await axios.get('/api/chat-conversations')
+    const response = await chatConversationApi.getChatConversations()
     chatList.value = response.data
   } catch (error) {
     ElMessage.error('获取聊天列表失败')
@@ -128,7 +130,7 @@ const fetchChatList = async () => {
 // 获取消息列表
 const fetchMessages = async (conversationId) => {
   try {
-    const response = await axios.get(`/api/chat-messages/${conversationId}`)
+    const response = await chatMessageApi.getChatMessages(conversationId)
     messages.value = response.data
     await nextTick()
     scrollToBottom()
@@ -140,7 +142,7 @@ const fetchMessages = async (conversationId) => {
 // 创建新对话
 const handleNewChat = async () => {
   try {
-    const response = await axios.post('/api/chat-conversations', {
+    const response = await chatConversationApi.createChatConversation({
       title: `新对话 ${new Date().toLocaleString()}`
     })
     chatList.value.unshift(response.data)
@@ -160,7 +162,7 @@ const handleSelectChat = async (chat) => {
 // 删除对话
 const handleDeleteChat = async (chat) => {
   try {
-    await axios.delete(`/api/chat-conversations/${chat.id}`)
+    await chatConversationApi.deleteChatConversation(chat.id)
     chatList.value = chatList.value.filter(c => c.id !== chat.id)
     if (currentChat.value?.id === chat.id) {
       currentChat.value = null
@@ -176,11 +178,11 @@ const handleDeleteChat = async (chat) => {
 const handleSaveAsTraining = async (chat) => {
   try {
     // 获取完整的对话消息
-    const response = await axios.get(`/api/chat-messages/${chat.id}`)
+    const response = await chatMessageApi.getChatMessages(chat.id)
     const messages = response.data
 
     // 创建训练数据对话
-    await axios.post('/api/conversations', {
+    await conversationApi.createConversation({
       title: `训练数据 - ${chat.title}`,
       messages: messages.map(msg => ({
         role: msg.role,
@@ -211,7 +213,7 @@ const handleSendMessage = async () => {
     }
 
     // 添加用户消息
-    await axios.post('/api/chat-messages', userMessage)
+    await chatMessageApi.createChatMessage(userMessage)
 
 
     messages.value.push({
@@ -280,7 +282,7 @@ const handleSendMessage = async () => {
       }
     }
 
-    await axios.post('/api/chat-messages', assistantMessage)
+    await chatMessageApi.createChatMessage(assistantMessage)
   } catch (error) {
     console.error('流式读取失败: ', error)
     ElMessage.error('发送消息失败')

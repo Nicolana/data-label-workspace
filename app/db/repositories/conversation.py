@@ -1,0 +1,159 @@
+import json
+from datetime import datetime
+from typing import List, Optional
+from app.db.session import get_db_cursor
+from app.models.conversation import Conversation, Message, ChatConversation, ChatMessage
+
+class ConversationRepository:
+    @staticmethod
+    def create(title: str, messages: List[Message]) -> Conversation:
+        now = datetime.now().isoformat()
+        messages_json = json.dumps([msg.dict() for msg in messages])
+        
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO conversations (title, messages, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (title, messages_json, now, now)
+            )
+            conversation_id = cursor.lastrowid
+            
+            return Conversation(
+                id=conversation_id,
+                title=title,
+                messages=messages,
+                created_at=now,
+                updated_at=now
+            )
+    
+    @staticmethod
+    def get(conversation_id: int) -> Optional[Conversation]:
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "SELECT id, title, messages, created_at, updated_at FROM conversations WHERE id = ?",
+                (conversation_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            messages = [Message(**msg) for msg in json.loads(row[2])]
+            return Conversation(
+                id=row[0],
+                title=row[1],
+                messages=messages,
+                created_at=row[3],
+                updated_at=row[4]
+            )
+    
+    @staticmethod
+    def list() -> List[Conversation]:
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "SELECT id, title, messages, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
+            )
+            rows = cursor.fetchall()
+            
+            conversations = []
+            for row in rows:
+                messages = [Message(**msg) for msg in json.loads(row[2])]
+                conversations.append(
+                    Conversation(
+                        id=row[0],
+                        title=row[1],
+                        messages=messages,
+                        created_at=row[3],
+                        updated_at=row[4]
+                    )
+                )
+            return conversations
+    
+    @staticmethod
+    def delete(conversation_id: int) -> bool:
+        with get_db_cursor() as cursor:
+            cursor.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+            return cursor.rowcount > 0
+
+class ChatConversationRepository:
+    @staticmethod
+    def create(title: str) -> ChatConversation:
+        now = datetime.now().isoformat()
+        
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO chat_conversations (title, created_at, updated_at) VALUES (?, ?, ?)",
+                (title, now, now)
+            )
+            conversation_id = cursor.lastrowid
+            
+            return ChatConversation(
+                id=conversation_id,
+                title=title,
+                created_at=now,
+                updated_at=now
+            )
+    
+    @staticmethod
+    def get(conversation_id: int) -> Optional[ChatConversation]:
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id) as message_count "
+                "FROM chat_conversations c "
+                "LEFT JOIN chat_messages m ON c.id = m.conversation_id "
+                "WHERE c.id = ? "
+                "GROUP BY c.id",
+                (conversation_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            return ChatConversation(
+                id=row[0],
+                title=row[1],
+                created_at=row[2],
+                updated_at=row[3],
+                message_count=row[4]
+            )
+    
+    @staticmethod
+    def list() -> List[ChatConversation]:
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id) as message_count "
+                "FROM chat_conversations c "
+                "LEFT JOIN chat_messages m ON c.id = m.conversation_id "
+                "GROUP BY c.id "
+                "ORDER BY c.updated_at DESC"
+            )
+            rows = cursor.fetchall()
+            
+            return [
+                ChatConversation(
+                    id=row[0],
+                    title=row[1],
+                    created_at=row[2],
+                    updated_at=row[3],
+                    message_count=row[4]
+                )
+                for row in rows
+            ]
+    
+    @staticmethod
+    def delete(conversation_id: int) -> bool:
+        with get_db_cursor() as cursor:
+            cursor.execute("DELETE FROM chat_conversations WHERE id = ?", (conversation_id,))
+            return cursor.rowcount > 0
+    
+    @staticmethod
+    def update_title(conversation_id: int, title: str) -> Optional[ChatConversation]:
+        now = datetime.now().isoformat()
+        
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?",
+                (title, now, conversation_id)
+            )
+            if cursor.rowcount == 0:
+                return None
+            
+            return ChatConversationRepository.get(conversation_id) 

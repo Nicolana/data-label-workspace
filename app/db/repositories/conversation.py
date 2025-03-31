@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 from app.db.session import get_db_cursor
 from app.models.conversation import Conversation, Message, ChatConversation, ChatMessage
-
+from app.utils.token import count_tokens
 class ConversationRepository:
     @staticmethod
     def create(title: str, messages: List[Message]) -> Conversation:
@@ -36,13 +36,17 @@ class ConversationRepository:
             if not row:
                 return None
             
-            messages = [Message(**msg) for msg in json.loads(row[2])]
+            messages_data = json.loads(row[2])
+            messages = [Message(**msg) for msg in messages_data]
+            
             return Conversation(
                 id=row[0],
                 title=row[1],
                 messages=messages,
                 created_at=row[3],
-                updated_at=row[4]
+                updated_at=row[4],
+                token_count=ConversationRepository._count_tokens(messages_data),
+                message_count=len(messages)
             )
     
     @staticmethod
@@ -55,14 +59,20 @@ class ConversationRepository:
             
             conversations = []
             for row in rows:
-                messages = [Message(**msg) for msg in json.loads(row[2])]
+                messages_data = json.loads(row[2])
+                messages = [Message(**msg) for msg in messages_data]
+                token_count = count_tokens(messages_data)
+                message_count = len(messages)
+                
                 conversations.append(
                     Conversation(
                         id=row[0],
                         title=row[1],
                         messages=messages,
                         created_at=row[3],
-                        updated_at=row[4]
+                        updated_at=row[4],
+                        token_count=token_count,
+                        message_count=message_count
                     )
                 )
             return conversations

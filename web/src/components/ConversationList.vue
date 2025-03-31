@@ -159,9 +159,7 @@
           .filter(conv => conv.selected)
           .map(conv => conv.id)
       })
-
-
-   
+      console.log("selectedIds =", selectedIds.value);
       
       // 检查特定ID是否被选中
       const isSelected = (id) => {
@@ -248,6 +246,7 @@
 
       // 监听会话列表变化，创建本地副本
       watch(() => props.conversations, (newVal) => {
+        console.log("newVal =", newVal);
         // 保持以前的选中状态
         const previousSelectedIds = selectedIds.value
         

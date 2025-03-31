@@ -29,6 +29,13 @@ async def copy_conversation(conversation_id: int):
         raise HTTPException(status_code=404, detail="对话不存在")
     return conversation
 
+@router.put("/conversations/{conversation_id}", response_model=Conversation)
+async def update_conversation(conversation_id: int, conversation: Conversation):
+    updated_conversation = ConversationRepository.update(conversation_id, conversation)
+    if not updated_conversation:
+        raise HTTPException(status_code=404, detail="对话不存在")
+    return updated_conversation
+
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: int):
     if not ConversationRepository.delete(conversation_id):

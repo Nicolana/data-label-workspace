@@ -25,5 +25,10 @@ export const conversationApi = {
   copyConversation(id) {
     return request.post(`/conversations/${id}/copy`)
   },
+
+  // 更新对话
+  updateConversation(id, data) {
+    return request.put(`/conversations/${id}`, data)
+  }
 } 
 

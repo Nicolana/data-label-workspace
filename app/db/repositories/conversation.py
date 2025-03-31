@@ -112,6 +112,26 @@ class ConversationRepository:
                 created_at=new_row[3],
                 updated_at=new_row[4]
             )
+    @staticmethod
+    def update(conversation_id: int, conversation: Conversation) -> Optional[Conversation]:
+        with get_db_cursor() as cursor:
+            now = datetime.now().isoformat()
+            messages_json = json.dumps([msg.dict() for msg in conversation.messages])
+            
+            cursor.execute(
+                "UPDATE conversations SET title = ?, messages = ?, updated_at = ? WHERE id = ?",
+                (conversation.title, messages_json, now, conversation_id)
+            )
+            
+            if cursor.rowcount == 0:
+                return None
+                
+            return Conversation(
+                id=conversation_id,
+                title=conversation.title,
+                messages=conversation.messages,
+                updated_at=now
+            )
 
 class ChatConversationRepository:
     @staticmethod

@@ -45,7 +45,7 @@ class ConversationRepository:
                 messages=messages,
                 created_at=row[3],
                 updated_at=row[4],
-                token_count=ConversationRepository._count_tokens(messages_data),
+                token_count=count_tokens(messages_data),
                 message_count=len(messages)
             )
     

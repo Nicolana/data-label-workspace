@@ -105,9 +105,8 @@ import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Delete, DocumentAdd } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
-import { chatConversationApi } from '../api/conversation'
-import { chatMessageApi } from '../api/chat'
-import { conversationApi } from '../api/conversation'
+import { conversationApi  } from '../api/conversation'
+import { chatConversationApi } from '../api/chat'
 
 // 状态
 const chatList = ref([])

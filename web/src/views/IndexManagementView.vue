@@ -8,9 +8,12 @@
           <el-button type="primary" size="small" @click="handleCreateIndex">
             <el-icon><Plus /></el-icon>创建索引
           </el-button>
-          <!-- <el-button type="success" size="small" @click="handleBatchImport">
-            <el-icon><Upload /></el-icon>批量导入
-          </el-button> -->
+          <el-button type="success" size="small" @click="handleBatchImport">
+            <el-icon><Upload /></el-icon>上传文件
+          </el-button>
+          <el-button type="warning" size="small" @click="handleIndexRepository">
+            <el-icon><Folder /></el-icon>索引代码库
+          </el-button>
         </div>
       </div>
 
@@ -274,13 +277,97 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 添加代码仓库索引对话框 -->
+    <el-dialog v-model="repoDialogVisible" title="索引代码仓库" width="650px">
+      <el-form :model="repoForm" label-width="120px">
+        <el-form-item v-if="!currentIndex" label="选择索引">
+          <el-select v-model="repoForm.indexId" style="width: 100%">
+            <el-option
+              v-for="item in indexList"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="代码仓库路径">
+          <el-input 
+            v-model="repoForm.repoPath" 
+            placeholder="请输入本地代码仓库的绝对路径"
+          />
+          <div class="form-tip">请确保后端服务有权限访问此路径</div>
+        </el-form-item>
+
+        <el-form-item label="递归处理">
+          <el-switch v-model="repoForm.recursive" />
+          <div class="form-tip">开启后将递归处理所有子目录</div>
+        </el-form-item>
+
+        <el-divider content-position="left">切片配置</el-divider>
+
+        <el-form-item label="切片策略">
+          <el-select v-model="repoForm.chunking.strategy" style="width: 100%">
+            <el-option label="按段落切分" value="paragraph" />
+            <el-option label="按固定字符数切分" value="fixed_size" />
+            <el-option label="按句子切分" value="sentence" />
+            <el-option label="不切分(整个文档)" value="no_chunking" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item 
+          label="块大小(字符数)" 
+          v-if="repoForm.chunking.strategy === 'fixed_size'"
+        >
+          <el-input-number 
+            v-model="repoForm.chunking.chunk_size" 
+            :min="100" 
+            :max="5000" 
+            :step="100" 
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item 
+          label="块重叠(字符数)" 
+          v-if="repoForm.chunking.strategy !== 'no_chunking'"
+        >
+          <el-input-number 
+            v-model="repoForm.chunking.chunk_overlap" 
+            :min="0" 
+            :max="500" 
+            :step="10" 
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-divider content-position="left">元数据</el-divider>
+
+        <el-form-item label="元数据">
+          <el-input
+            v-model="repoForm.metadata"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入JSON格式的元数据，将添加到所有文档"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="repoDialogVisible = false">取消</el-button>
+          <el-button :loading="indexingRepo" type="primary" @click="submitIndexRepository">开始索引</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Upload, More } from '@element-plus/icons-vue'
+import { Plus, Upload, More, Folder } from '@element-plus/icons-vue'
 import { indexApi } from '../api/index'
 
 // 状态
@@ -288,12 +375,14 @@ const indexList = ref([])
 const createDialogVisible = ref(false)
 const addDocDialogVisible = ref(false)
 const batchDialogVisible = ref(false)
+const repoDialogVisible = ref(false)
 const documents = ref([])
 const currentIndex = ref(null)
 const activeTab = ref('documents')
 const recallQuery = ref('')
 const chatHistory = ref([])
 const uploading = ref(false)
+const indexingRepo = ref(false)
 const batchFileList = ref([])
 const batchUploadRef = ref(null)
 
@@ -315,6 +404,19 @@ const batchForm = ref({
     chunk_size: 500,
     chunk_overlap: 50,
     separator: null
+  },
+  metadata: '{}'
+})
+
+// 添加代码仓库索引表单
+const repoForm = ref({
+  indexId: null,
+  repoPath: '',
+  recursive: false,
+  chunking: {
+    strategy: 'paragraph',
+    chunk_size: 500,
+    chunk_overlap: 50
   },
   metadata: '{}'
 })
@@ -635,6 +737,79 @@ watch(currentIndex, () => {
   chatHistory.value = []
 })
 
+// 索引代码仓库
+const handleIndexRepository = (index = null) => {
+  if (index) {
+    currentIndex.value = index
+  }
+  
+  if (!currentIndex.value && indexList.value.length === 0) {
+    ElMessage.warning('请先创建至少一个索引')
+    return
+  }
+  
+  repoForm.value = {
+    indexId: currentIndex.value ? currentIndex.value.id : (indexList.value.length > 0 ? indexList.value[0].id : null),
+    repoPath: '',
+    recursive: true,
+    chunking: {
+      strategy: 'paragraph',
+      chunk_size: 500,
+      chunk_overlap: 50
+    },
+    metadata: '{}'
+  }
+  
+  repoDialogVisible.value = true
+}
+
+// 提交索引代码仓库
+const submitIndexRepository = async () => {
+  if (!repoForm.value.indexId) {
+    ElMessage.warning('请选择索引')
+    return
+  }
+
+  if (!repoForm.value.repoPath) {
+    ElMessage.warning('请输入代码仓库路径')
+    return
+  }
+
+  let metadata = {}
+  try {
+    metadata = JSON.parse(repoForm.value.metadata)
+  } catch (e) {
+    // 使用空对象作为默认值
+    metadata = {}
+  }
+
+  indexingRepo.value = true
+  
+  try {
+    const response = await indexApi.indexRepository(
+      repoForm.value.indexId, 
+      repoForm.value.repoPath, 
+      repoForm.value.chunking, 
+      metadata, 
+      repoForm.value.recursive
+    )
+    
+    const result = response.data
+    ElMessage.success(`索引代码仓库成功，共处理 ${result.total_files} 个文件，${result.total_chunks} 个文档`)
+    
+    // 如果选择的索引是当前显示的索引，刷新文档列表
+    if (currentIndex.value && currentIndex.value.id === repoForm.value.indexId) {
+      await fetchDocuments(currentIndex.value.id)
+    }
+    
+    repoDialogVisible.value = false
+  } catch (error) {
+    ElMessage.error('索引代码仓库失败')
+  } finally {
+    indexingRepo.value = false
+  }
+}
+
 onMounted(() => {
   fetchIndexList()
 })
@@ -917,5 +1092,12 @@ onMounted(() => {
   font-size: 14px;
   font-weight: bold;
   color: #606266;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 </style> 

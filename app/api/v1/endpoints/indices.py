@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 from datetime import datetime
-from pydantic import parse_obj_as
+from pydantic import parse_obj_as, BaseModel
 
 from app.core.exceptions import NotFoundException
 from app.models.index import DocumentRecallRequest, Index, IndexCreate, Document, DocumentCreate, FileUploadRequest, ChunkingConfig, ProcessedFileInfo
@@ -20,6 +20,20 @@ embedding_service = EmbeddingService()
 # 临时文件存储目录
 TEMP_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "temp_uploads")
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+
+# 代码仓库索引请求模型
+class RepoIndexRequest(BaseModel):
+    repo_path: str
+    chunking_config: ChunkingConfig
+    recursive: bool = True
+    metadata: Optional[Dict[str, Any]] = None
+
+# 代码仓库索引结果
+class RepoIndexResult(BaseModel):
+    total_files: int
+    total_chunks: int
+    total_characters: int
+    processed_files: List[ProcessedFileInfo]
 
 @router.post("/indices", response_model=ApiResponse[Index])
 async def create_index(index: IndexCreate):
@@ -135,7 +149,7 @@ async def upload_file(
         chunks = await DocumentProcessor.process_file(file_path, chunking_config)
         
         # 将文本块转换为文档
-        documents = DocumentProcessor.chunks_to_documents(chunks, metadata)
+        documents = DocumentProcessor.chunks_to_documents(chunks, metadata, file_path)
         
         # 添加文档到索引
         for doc in documents:
@@ -201,7 +215,7 @@ async def batch_upload(
             chunks = await DocumentProcessor.process_file(file_path, chunking_config)
             
             # 将文本块转换为文档
-            documents = DocumentProcessor.chunks_to_documents(chunks, metadata)
+            documents = DocumentProcessor.chunks_to_documents(chunks, metadata, file_path)
             
             # 添加文档到索引
             for doc in documents:
@@ -224,3 +238,79 @@ async def batch_upload(
                 os.remove(file_path)
     
     return success(data=results)
+
+@router.post("/indices/{index_id}/index-repository", response_model=ApiResponse[RepoIndexResult])
+async def index_repository(index_id: int, request: RepoIndexRequest):
+    """
+    索引本地代码仓库
+    
+    处理指定目录下的所有代码文件并添加到索引中
+    
+    Args:
+        index_id: 索引ID
+        request: 请求参数，包含仓库路径、切片配置等
+    """
+    # 检查索引是否存在
+    index = IndexRepository.get(index_id)
+    if not index:
+        raise NotFoundException(message="索引不存在")
+    
+    # 检查仓库路径是否存在
+    if not os.path.exists(request.repo_path):
+        raise HTTPException(status_code=400, detail=f"路径不存在: {request.repo_path}")
+    
+    # 处理代码仓库
+    repo_results = await DocumentProcessor.process_directory(
+        request.repo_path, 
+        request.chunking_config, 
+        request.recursive
+    )
+    
+    # 添加文档到索引
+    total_chunks = 0
+    total_characters = 0
+    processed_files = []
+    
+    for result in repo_results:
+        # 添加元数据
+        file_metadata = request.metadata or {}
+        file_metadata.update({
+            "repo_path": request.repo_path,
+            "file_path": result["path"],
+            "file_name": result["filename"]
+        })
+        
+        # 将文本块转换为文档
+        documents = DocumentProcessor.chunks_to_documents(
+            result["chunks"], 
+            file_metadata, 
+            os.path.join(request.repo_path, result["path"])
+        )
+        
+        # 添加文档到索引
+        for doc in documents:
+            # 获取文档向量
+            embedding = embedding_service.get_embedding(doc.content)
+            # 创建文档
+            DocumentRepository.create(index_id, doc, embedding)
+        
+        # 更新统计信息
+        total_chunks += result["chunk_count"]
+        total_characters += result["total_characters"]
+        
+        # 添加到处理结果
+        processed_files.append(ProcessedFileInfo(
+            filename=result["path"],
+            chunk_count=result["chunk_count"],
+            total_characters=result["total_characters"]
+        ))
+    
+    # 创建结果
+    result = RepoIndexResult(
+        total_files=len(repo_results),
+        total_chunks=total_chunks,
+        total_characters=total_characters,
+        processed_files=processed_files
+    )
+    
+    return success(data=result)

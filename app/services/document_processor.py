@@ -1,5 +1,6 @@
 import os
 import re
+import fnmatch
 from typing import List, Dict, Any, Optional
 import docx
 import PyPDF2
@@ -13,6 +14,36 @@ class DocumentProcessor:
     """
     文档处理器，负责处理上传的文件并进行切片
     """
+    
+    # 代码文件扩展名列表
+    CODE_EXTENSIONS = [
+        # Python
+        '.py', '.pyx', '.pyi', '.pyw', 
+        # Web
+        '.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.vue', '.json',
+        # Java相关
+        '.java', '.kt', '.groovy', '.scala',
+        # C/C++相关
+        '.c', '.cpp', '.cc', '.h', '.hpp',
+        # 其他常见编程语言
+        '.go', '.rb', '.php', '.pl', '.swift', '.rs', '.cs', '.fs', '.sh', '.bat', '.ps1'
+    ]
+    
+    # 忽略的文件和目录模式
+    IGNORE_PATTERNS = [
+        # 构建目录
+        '**/node_modules/**', '**/build/**', '**/dist/**', '**/target/**', '**/.git/**',
+        # 缓存和临时文件
+        '**/__pycache__/**', '**/.cache/**', '**/tmp/**', '**/.tmp/**',
+        # 编译文件
+        '**/*.pyc', '**/*.pyo', '**/*.class', '**/*.o', '**/*.obj',
+        # 日志文件
+        '**/*.log',
+        # 大型二进制文件
+        '**/*.zip', '**/*.tar', '**/*.gz', '**/*.jar', '**/*.war',
+        '**/*.mp3', '**/*.mp4', '**/*.avi', '**/*.mov', '**/*.png', '**/*.jpg', '**/*.jpeg',
+        '**/*.gif', '**/*.ico', '**/*.svg', '**/*.pdf'
+    ]
     
     @staticmethod
     async def process_file(file_path: str, chunking_config: ChunkingConfig) -> List[str]:
@@ -38,6 +69,8 @@ class DocumentProcessor:
             text = DocumentProcessor._read_pdf_file(file_path)
         elif file_ext in ['.md', '.markdown']:
             text = DocumentProcessor._read_markdown_file(file_path)
+        elif file_ext in DocumentProcessor.CODE_EXTENSIONS:
+            text = DocumentProcessor._read_code_file(file_path)
         else:
             raise ValueError(f"不支持的文件类型: {file_ext}")
         
@@ -103,6 +136,70 @@ class DocumentProcessor:
         """读取Markdown文件，保留原始格式"""
         # Markdown直接作为文本文件读取，保留其格式，便于后续处理
         return DocumentProcessor._read_text_file(file_path)
+    
+    @staticmethod
+    def _read_code_file(file_path: str) -> str:
+        """读取代码文件，添加文件路径作为前缀"""
+        content = DocumentProcessor._read_text_file(file_path)
+        return f"File: {file_path}\n\n```{os.path.splitext(file_path)[1][1:]}\n{content}\n```"
+    
+    @staticmethod
+    def _should_ignore_file(file_path: str) -> bool:
+        """检查是否应该忽略文件"""
+        for pattern in DocumentProcessor.IGNORE_PATTERNS:
+            if fnmatch.fnmatch(file_path, pattern):
+                return True
+        return False
+    
+    @staticmethod
+    async def process_directory(dir_path: str, chunking_config: ChunkingConfig, recursive: bool = True) -> List[Dict[str, Any]]:
+        """
+        递归处理目录下的所有文件
+        
+        Args:
+            dir_path: 目录路径
+            chunking_config: 切片配置
+            recursive: 是否递归处理子目录
+            
+        Returns:
+            List[Dict]: 处理结果列表，每个元素包含文件名、路径和文本块
+        """
+        results = []
+        
+        for root, dirs, files in os.walk(dir_path):
+            # 处理当前目录下的文件
+            for file in files:
+                file_path = os.path.join(root, file)
+                
+                # 检查是否应该忽略
+                if DocumentProcessor._should_ignore_file(file_path):
+                    continue
+                
+                # 检查文件扩展名是否支持
+                ext = os.path.splitext(file)[1].lower()
+                if ext not in ['.txt', '.docx', '.pdf', '.md', '.markdown'] and ext not in DocumentProcessor.CODE_EXTENSIONS:
+                    continue
+                
+                try:
+                    # 处理文件
+                    chunks = await DocumentProcessor.process_file(file_path, chunking_config)
+                    relative_path = os.path.relpath(file_path, dir_path)
+                    
+                    results.append({
+                        'filename': file,
+                        'path': relative_path,
+                        'chunks': chunks,
+                        'chunk_count': len(chunks),
+                        'total_characters': sum(len(chunk) for chunk in chunks)
+                    })
+                except Exception as e:
+                    print(f"处理文件 {file_path} 失败: {str(e)}")
+            
+            # 如果不递归，直接返回
+            if not recursive:
+                break
+        
+        return results
     
     @staticmethod
     def _chunk_by_paragraph(text: str, config: ChunkingConfig) -> List[str]:
@@ -208,18 +305,26 @@ class DocumentProcessor:
         return chunks
     
     @staticmethod
-    def chunks_to_documents(chunks: List[str], metadata: Optional[Dict[str, Any]] = None) -> List[DocumentCreate]:
+    def chunks_to_documents(chunks: List[str], metadata: Optional[Dict[str, Any]] = None, file_path: Optional[str] = None) -> List[DocumentCreate]:
         """
         将文本块转换为文档对象
         
         Args:
             chunks: 文本块列表
             metadata: 要添加到所有文档的元数据
+            file_path: 文件路径，将作为元数据添加
             
         Returns:
             List[DocumentCreate]: 文档对象列表
         """
         base_metadata = metadata or {}
+        
+        # 如果提供了文件路径，添加到元数据
+        if file_path:
+            base_metadata["file_path"] = file_path
+            base_metadata["file_name"] = os.path.basename(file_path)
+            base_metadata["file_extension"] = os.path.splitext(file_path)[1]
+        
         return [
             DocumentCreate(
                 content=chunk,

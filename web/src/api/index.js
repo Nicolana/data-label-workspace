@@ -90,5 +90,19 @@ export const indexApi = {
         'Content-Type': 'multipart/form-data'
       }
     })
+  },
+  
+  // 索引本地代码仓库
+  indexRepository(indexId, repoPath, config, metadata = {}, recursive = true) {
+    return request({
+      url: `/indices/${indexId}/index-repository`,
+      method: 'post',
+      data: {
+        repo_path: repoPath,
+        chunking_config: config,
+        recursive: recursive,
+        metadata: metadata
+      }
+    })
   }
 } 

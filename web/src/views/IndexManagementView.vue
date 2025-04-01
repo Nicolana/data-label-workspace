@@ -8,12 +8,6 @@
           <el-button type="primary" size="small" @click="handleCreateIndex">
             <el-icon><Plus /></el-icon>创建索引
           </el-button>
-          <el-button type="success" size="small" @click="handleBatchImport">
-            <el-icon><Upload /></el-icon>上传文件
-          </el-button>
-          <el-button type="warning" size="small" @click="handleIndexRepository">
-            <el-icon><Folder /></el-icon>索引代码库
-          </el-button>
         </div>
       </div>
 
@@ -63,6 +57,9 @@
             </el-button>
             <el-button type="success" size="small" @click="handleBatchImport(currentIndex)">
               <el-icon><Upload /></el-icon>上传文件
+            </el-button>
+            <el-button type="warning" size="small" @click="handleIndexRepository(currentIndex)">
+              <el-icon><Folder /></el-icon>索引代码库
             </el-button>
           </div>
         </div>

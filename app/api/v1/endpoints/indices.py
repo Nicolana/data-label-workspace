@@ -116,9 +116,10 @@ async def recall_test(request: DocumentRecallRequest):
     if not index:
         raise NotFoundException(message="索引不存在")
     
+    print("开发获取查询文本向量")
     # 获取查询向量
     query_embedding = embedding_service.get_embedding(request.query)
-    
+    print("开发获取查询文本向量完成")
     # 搜索相似文档
     return success(data=DocumentRepository.search_similar(request.index_id, query_embedding, request.top_k))
 

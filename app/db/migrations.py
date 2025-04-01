@@ -72,16 +72,15 @@ def init_db():
         )
         ''')
         
-        # 创建向量索引表
+        # 创建向量索引元数据表（不再存储FAISS索引本身）
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS vector_indices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             index_id INTEGER NOT NULL UNIQUE,
-            faiss_index BLOB,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (index_id) REFERENCES indices (id) ON DELETE CASCADE
         )
         ''')
         
-        conn.commit() 
+        conn.commit()

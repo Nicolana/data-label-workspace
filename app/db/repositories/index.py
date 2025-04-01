@@ -2,10 +2,20 @@ import json
 import numpy as np
 import faiss
 import pickle
+import os
 from datetime import datetime
 from typing import List, Optional
 from app.db.session import get_db_cursor
 from app.models.index import Index, IndexCreate, Document, DocumentCreate
+from app.core.config import settings
+
+# 创建索引文件目录
+INDICES_DIR = os.path.join(os.path.dirname(settings.DB_FILE), "vector_indices")
+os.makedirs(INDICES_DIR, exist_ok=True)
+
+def get_index_file_path(index_id: int) -> str:
+    """获取索引文件路径"""
+    return os.path.join(INDICES_DIR, f"index_{index_id}.faiss")
 
 class IndexRepository:
     @staticmethod
@@ -19,11 +29,14 @@ class IndexRepository:
             
             # 创建空的 FAISS 索引
             faiss_index = faiss.IndexFlatL2(384)  # 使用配置中的维度
-            index_bytes = pickle.dumps(faiss_index)
             
+            # 保存到文件系统
+            faiss.write_index(faiss_index, get_index_file_path(index_id))
+            
+            # 记录索引元数据
             cursor.execute(
-                "INSERT INTO vector_indices (index_id, faiss_index) VALUES (?, ?)",
-                (index_id, index_bytes)
+                "INSERT INTO vector_indices (index_id) VALUES (?)",
+                (index_id,)
             )
             
             return Index(
@@ -84,7 +97,13 @@ class IndexRepository:
     def delete(index_id: int) -> bool:
         with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM indices WHERE id = ?", (index_id,))
-            return cursor.rowcount > 0
+            if cursor.rowcount > 0:
+                # 删除对应的向量索引文件
+                index_file = get_index_file_path(index_id)
+                if os.path.exists(index_file):
+                    os.remove(index_file)
+                return True
+            return False
     
     @staticmethod
     def rebuild_faiss_index(index_id: int) -> bool:
@@ -117,15 +136,10 @@ class IndexRepository:
                     embedding = np.frombuffer(embedding_bytes, dtype=np.float32).reshape(1, -1)
                     faiss_index.add(embedding)
             
-            # 保存 FAISS 索引
-            index_bytes = pickle.dumps(faiss_index)
+            # 保存到文件系统
+            faiss.write_index(faiss_index, get_index_file_path(index_id))
             
-            cursor.execute(
-                "UPDATE vector_indices SET faiss_index = ? WHERE index_id = ?",
-                (index_bytes, index_id)
-            )
-            
-            return cursor.rowcount > 0
+            return True
 
 class DocumentRepository:
     @staticmethod
@@ -139,15 +153,11 @@ class DocumentRepository:
             doc_id = cursor.lastrowid
             
             # 更新 FAISS 索引
-            cursor.execute("SELECT faiss_index FROM vector_indices WHERE index_id = ?", (index_id,))
-            faiss_index = pickle.loads(cursor.fetchone()[0])
-            faiss_index.add(embedding.reshape(1, -1))
-            index_bytes = pickle.dumps(faiss_index)
-            
-            cursor.execute(
-                "UPDATE vector_indices SET faiss_index = ? WHERE index_id = ?",
-                (index_bytes, index_id)
-            )
+            index_file = get_index_file_path(index_id)
+            if os.path.exists(index_file):
+                faiss_index = faiss.read_index(index_file)
+                faiss_index.add(embedding.reshape(1, -1))
+                faiss.write_index(faiss_index, index_file)
             
             return Document(
                 id=doc_id,
@@ -205,23 +215,22 @@ class DocumentRepository:
     
     @staticmethod
     def search_similar(index_id: int, query_embedding: np.ndarray, k: int = 5) -> List[Document]:
+        index_file = get_index_file_path(index_id)
+        if not os.path.exists(index_file):
+            return []
+            
+        # 从文件加载 FAISS 索引
+        faiss_index = faiss.read_index(index_file)
+        
+        # 检查索引中是否有向量
+        if faiss_index.ntotal == 0:
+            return []
+        
+        # 搜索相似向量
+        distances, indices = faiss_index.search(query_embedding.reshape(1, -1), min(k, faiss_index.ntotal))
+        
+        # 获取文档内容
         with get_db_cursor() as cursor:
-            # 加载 FAISS 索引
-            cursor.execute("SELECT faiss_index FROM vector_indices WHERE index_id = ?", (index_id,))
-            faiss_index_bytes = cursor.fetchone()
-            if not faiss_index_bytes:
-                return []
-                
-            faiss_index = pickle.loads(faiss_index_bytes[0])
-            
-            # 检查索引中是否有向量
-            if faiss_index.ntotal == 0:
-                return []
-            
-            # 搜索相似向量
-            distances, indices = faiss_index.search(query_embedding.reshape(1, -1), min(k, faiss_index.ntotal))
-            
-            # 获取文档内容
             results = []
             for i, idx in enumerate(indices[0]):
                 if idx < 0:  # FAISS 返回 -1 表示没有足够的结果

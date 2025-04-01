@@ -27,13 +27,6 @@ os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 GIT_CLONE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "git_repos")
 os.makedirs(GIT_CLONE_DIR, exist_ok=True)
 
-# 代码仓库索引请求模型
-class RepoIndexRequest(BaseModel):
-    repo_path: str
-    chunking_config: ChunkingConfig
-    recursive: bool = True
-    metadata: Optional[Dict[str, Any]] = None
-
 # Git仓库索引请求模型
 class GitRepoIndexRequest(BaseModel):
     git_url: HttpUrl
@@ -253,75 +246,6 @@ async def batch_upload(
                 os.remove(file_path)
     
     return success(data=results)
-
-@router.post("/indices/{index_id}/index-repository", response_model=ApiResponse[RepoIndexResult])
-async def index_repository(
-    index_id: int,
-    request: RepoIndexRequest
-):
-    # 检查索引是否存在
-    index = IndexRepository.get(index_id)
-    if not index:
-        raise NotFoundException(message="索引不存在")
-    
-    # 检查目录是否存在
-    if not os.path.exists(request.repo_path) or not os.path.isdir(request.repo_path):
-        raise HTTPException(status_code=400, detail="目录不存在或不是一个有效的目录")
-    
-    # 处理目录
-    try:
-        results = await DocumentProcessor.process_directory(
-            request.repo_path, 
-            request.chunking_config, 
-            request.recursive
-        )
-        
-        # 添加到索引
-        total_chunks = 0
-        processed_files = []
-        
-        for file_result in results:
-            # 为每个文件添加元数据
-            file_metadata = {
-                **(request.metadata or {}),
-                'repo_path': request.repo_path,
-                'file_path': file_result['path'],
-                'file_name': file_result['filename'],
-                'processed_at': datetime.now().isoformat()
-            }
-            
-            # 创建文档对象
-            documents = DocumentProcessor.chunks_to_documents(
-                file_result['chunks'],
-                file_metadata,
-                os.path.join(request.repo_path, file_result['path'])
-            )
-            
-            # 添加到数据库
-            document_ids = DocumentRepository.batch_create(index_id, documents)
-            
-            # 记录处理信息
-            total_chunks += len(documents)
-            processed_files.append(
-                ProcessedFileInfo(
-                    filename=file_result['filename'],
-                    path=file_result['path'],
-                    chunks=len(documents),
-                    characters=file_result['total_characters']
-                )
-            )
-        
-        # 返回结果
-        return success(data=RepoIndexResult(
-            total_files=len(results),
-            total_chunks=total_chunks,
-            total_characters=sum(f['total_characters'] for f in results),
-            processed_files=processed_files
-        ))
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"处理目录失败: {str(e)}")
-
 
 @router.post("/indices/{index_id}/index-git-repository", response_model=ApiResponse[RepoIndexResult])
 async def index_git_repository(

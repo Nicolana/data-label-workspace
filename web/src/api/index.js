@@ -92,20 +92,6 @@ export const indexApi = {
     })
   },
   
-  // 索引本地代码仓库
-  indexRepository(indexId, repoPath, config, metadata = {}, recursive = true) {
-    return request({
-      url: `/indices/${indexId}/index-repository`,
-      method: 'post',
-      data: {
-        repo_path: repoPath,
-        chunking_config: config,
-        recursive: recursive,
-        metadata: metadata
-      }
-    })
-  },
-  
   // 索引Git仓库
   indexGitRepository(indexId, gitUrl, branch = 'main', config, metadata = {}, recursive = true) {
     return request({

@@ -82,9 +82,9 @@ async def rebuild_index(index_id: int):
     return success(message="索引重建成功")
 
 @router.post("/indices/{index_id}/recall-test", response_model=ApiResponse[List[Document]])
-async def recall_test(index_id: int, request: DocumentRecallRequest):
+async def recall_test(request: DocumentRecallRequest):
     # 检查索引是否存在
-    index = IndexRepository.get(index_id)
+    index = IndexRepository.get(request.index_id)
     if not index:
         raise NotFoundException(message="索引不存在")
     
@@ -92,7 +92,7 @@ async def recall_test(index_id: int, request: DocumentRecallRequest):
     query_embedding = embedding_service.get_embedding(request.query)
     
     # 搜索相似文档
-    return success(data=DocumentRepository.search_similar(index_id, query_embedding, request.top_k))
+    return success(data=DocumentRepository.search_similar(request.index_id, query_embedding, request.top_k))
 
 @router.post("/indices/{index_id}/upload-file", response_model=ApiResponse[ProcessedFileInfo])
 async def upload_file(

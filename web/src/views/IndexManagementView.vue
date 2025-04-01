@@ -8,9 +8,9 @@
           <el-button type="primary" size="small" @click="handleCreateIndex">
             <el-icon><Plus /></el-icon>创建索引
           </el-button>
-          <el-button type="success" size="small" @click="handleBatchImport">
+          <!-- <el-button type="success" size="small" @click="handleBatchImport">
             <el-icon><Upload /></el-icon>批量导入
-          </el-button>
+          </el-button> -->
         </div>
       </div>
 

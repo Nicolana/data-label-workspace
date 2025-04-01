@@ -50,7 +50,6 @@ class ResponseFormatMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             # 记录异常
             error_detail = f"服务器内部错误: {str(exc)}\n{traceback.format_exc()}"
-            print(error_detail)  # 在生产环境中使用适当的日志记录方式
             
             # 返回统一格式的错误响应
             error_response = server_error(message="服务器内部错误，请稍后再试")

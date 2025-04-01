@@ -33,3 +33,4 @@ dist-ssr
 
 conversations.db
 .env
+temp_uploads/

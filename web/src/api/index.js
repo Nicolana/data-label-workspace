@@ -104,5 +104,20 @@ export const indexApi = {
         metadata: metadata
       }
     })
+  },
+  
+  // 索引Git仓库
+  indexGitRepository(indexId, gitUrl, branch = 'main', config, metadata = {}, recursive = true) {
+    return request({
+      url: `/indices/${indexId}/index-git-repository`,
+      method: 'post',
+      data: {
+        git_url: gitUrl,
+        branch: branch,
+        chunking_config: config,
+        recursive: recursive,
+        metadata: metadata
+      }
+    })
   }
 } 

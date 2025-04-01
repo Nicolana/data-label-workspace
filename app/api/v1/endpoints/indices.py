@@ -5,7 +5,9 @@ import os
 import shutil
 import tempfile
 from datetime import datetime
-from pydantic import parse_obj_as, BaseModel
+import subprocess
+import git
+from pydantic import parse_obj_as, BaseModel, HttpUrl
 
 from app.core.exceptions import NotFoundException
 from app.models.index import DocumentRecallRequest, Index, IndexCreate, Document, DocumentCreate, FileUploadRequest, ChunkingConfig, ProcessedFileInfo
@@ -21,9 +23,21 @@ embedding_service = EmbeddingService()
 TEMP_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "temp_uploads")
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 
+# Git仓库临时克隆目录
+GIT_CLONE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "git_repos")
+os.makedirs(GIT_CLONE_DIR, exist_ok=True)
+
 # 代码仓库索引请求模型
 class RepoIndexRequest(BaseModel):
     repo_path: str
+    chunking_config: ChunkingConfig
+    recursive: bool = True
+    metadata: Optional[Dict[str, Any]] = None
+
+# Git仓库索引请求模型
+class GitRepoIndexRequest(BaseModel):
+    git_url: HttpUrl
+    branch: Optional[str] = "main"
     chunking_config: ChunkingConfig
     recursive: bool = True
     metadata: Optional[Dict[str, Any]] = None
@@ -240,77 +254,158 @@ async def batch_upload(
     return success(data=results)
 
 @router.post("/indices/{index_id}/index-repository", response_model=ApiResponse[RepoIndexResult])
-async def index_repository(index_id: int, request: RepoIndexRequest):
-    """
-    索引本地代码仓库
-    
-    处理指定目录下的所有代码文件并添加到索引中
-    
-    Args:
-        index_id: 索引ID
-        request: 请求参数，包含仓库路径、切片配置等
-    """
+async def index_repository(
+    index_id: int,
+    request: RepoIndexRequest
+):
     # 检查索引是否存在
     index = IndexRepository.get(index_id)
     if not index:
         raise NotFoundException(message="索引不存在")
     
-    # 检查仓库路径是否存在
-    if not os.path.exists(request.repo_path):
-        raise HTTPException(status_code=400, detail=f"路径不存在: {request.repo_path}")
+    # 检查目录是否存在
+    if not os.path.exists(request.repo_path) or not os.path.isdir(request.repo_path):
+        raise HTTPException(status_code=400, detail="目录不存在或不是一个有效的目录")
     
-    # 处理代码仓库
-    repo_results = await DocumentProcessor.process_directory(
-        request.repo_path, 
-        request.chunking_config, 
-        request.recursive
-    )
-    
-    # 添加文档到索引
-    total_chunks = 0
-    total_characters = 0
-    processed_files = []
-    
-    for result in repo_results:
-        # 添加元数据
-        file_metadata = request.metadata or {}
-        file_metadata.update({
-            "repo_path": request.repo_path,
-            "file_path": result["path"],
-            "file_name": result["filename"]
-        })
-        
-        # 将文本块转换为文档
-        documents = DocumentProcessor.chunks_to_documents(
-            result["chunks"], 
-            file_metadata, 
-            os.path.join(request.repo_path, result["path"])
+    # 处理目录
+    try:
+        results = await DocumentProcessor.process_directory(
+            request.repo_path, 
+            request.chunking_config, 
+            request.recursive
         )
         
-        # 添加文档到索引
-        for doc in documents:
-            # 获取文档向量
-            embedding = embedding_service.get_embedding(doc.content)
-            # 创建文档
-            DocumentRepository.create(index_id, doc, embedding)
+        # 添加到索引
+        total_chunks = 0
+        processed_files = []
         
-        # 更新统计信息
-        total_chunks += result["chunk_count"]
-        total_characters += result["total_characters"]
+        for file_result in results:
+            # 为每个文件添加元数据
+            file_metadata = {
+                **(request.metadata or {}),
+                'repo_path': request.repo_path,
+                'file_path': file_result['path'],
+                'file_name': file_result['filename'],
+                'processed_at': datetime.now().isoformat()
+            }
+            
+            # 创建文档对象
+            documents = DocumentProcessor.chunks_to_documents(
+                file_result['chunks'],
+                file_metadata,
+                os.path.join(request.repo_path, file_result['path'])
+            )
+            
+            # 添加到数据库
+            document_ids = DocumentRepository.batch_create(index_id, documents)
+            
+            # 记录处理信息
+            total_chunks += len(documents)
+            processed_files.append(
+                ProcessedFileInfo(
+                    filename=file_result['filename'],
+                    path=file_result['path'],
+                    chunks=len(documents),
+                    characters=file_result['total_characters']
+                )
+            )
         
-        # 添加到处理结果
-        processed_files.append(ProcessedFileInfo(
-            filename=result["path"],
-            chunk_count=result["chunk_count"],
-            total_characters=result["total_characters"]
+        # 返回结果
+        return success(data=RepoIndexResult(
+            total_files=len(results),
+            total_chunks=total_chunks,
+            total_characters=sum(f['total_characters'] for f in results),
+            processed_files=processed_files
         ))
     
-    # 创建结果
-    result = RepoIndexResult(
-        total_files=len(repo_results),
-        total_chunks=total_chunks,
-        total_characters=total_characters,
-        processed_files=processed_files
-    )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"处理目录失败: {str(e)}")
+
+
+@router.post("/indices/{index_id}/index-git-repository", response_model=ApiResponse[RepoIndexResult])
+async def index_git_repository(
+    index_id: int,
+    request: GitRepoIndexRequest
+):
+    # 检查索引是否存在
+    index = IndexRepository.get(index_id)
+    if not index:
+        raise NotFoundException(message="索引不存在")
     
-    return success(data=result)
+    # 创建唯一的临时目录
+    repo_name = request.git_url.split('/')[-1].replace('.git', '')
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    clone_dir = os.path.join(GIT_CLONE_DIR, f"{repo_name}_{timestamp}")
+    
+    try:
+        # 克隆Git仓库
+        repo = git.Repo.clone_from(
+            str(request.git_url),
+            clone_dir,
+            depth=1,
+            branch=request.branch
+        )
+        
+        # 克隆成功后处理目录
+        results = await DocumentProcessor.process_directory(
+            clone_dir, 
+            request.chunking_config, 
+            request.recursive
+        )
+        
+        # 添加到索引
+        total_chunks = 0
+        processed_files = []
+        
+        for file_result in results:
+            # 为每个文件添加元数据
+            file_metadata = {
+                **(request.metadata or {}),
+                'git_repo': str(request.git_url),
+                'git_branch': request.branch,
+                'file_path': file_result['path'],
+                'file_name': file_result['filename'],
+                'processed_at': datetime.now().isoformat()
+            }
+            
+            # 创建文档对象
+            documents = DocumentProcessor.chunks_to_documents(
+                file_result['chunks'],
+                file_metadata,
+                os.path.join(clone_dir, file_result['path'])
+            )
+            
+            # 添加到数据库
+            document_ids = DocumentRepository.batch_create(index_id, documents)
+            
+            # 记录处理信息
+            total_chunks += len(documents)
+            processed_files.append(
+                ProcessedFileInfo(
+                    filename=file_result['filename'],
+                    path=file_result['path'],
+                    chunks=len(documents),
+                    characters=file_result['total_characters']
+                )
+            )
+        
+        # 返回结果
+        return success(data=RepoIndexResult(
+            total_files=len(results),
+            total_chunks=total_chunks,
+            total_characters=sum(f['total_characters'] for f in results),
+            processed_files=processed_files
+        ))
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"处理Git仓库失败: {str(e)}"
+        )
+    finally:
+        # 清理：无论成功或失败，都尝试删除临时目录
+        try:
+            if os.path.exists(clone_dir):
+                shutil.rmtree(clone_dir)
+        except Exception as e:
+            print(f"清理临时目录失败: {str(e)}")

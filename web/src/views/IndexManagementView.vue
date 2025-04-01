@@ -292,13 +292,34 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="代码仓库路径">
-          <el-input 
-            v-model="repoForm.repoPath" 
-            placeholder="请输入本地代码仓库的绝对路径"
-          />
-          <div class="form-tip">请确保后端服务有权限访问此路径</div>
-        </el-form-item>
+        <el-tabs v-model="repoForm.sourceType">
+          <el-tab-pane label="本地目录" name="local">
+            <el-form-item label="代码仓库路径">
+              <el-input 
+                v-model="repoForm.repoPath" 
+                placeholder="请输入本地代码仓库的绝对路径"
+              />
+              <div class="form-tip">请确保后端服务有权限访问此路径</div>
+            </el-form-item>
+          </el-tab-pane>
+          
+          <el-tab-pane label="Git仓库" name="git">
+            <el-form-item label="Git仓库URL">
+              <el-input 
+                v-model="repoForm.gitUrl" 
+                placeholder="请输入Git仓库地址，例如：https://github.com/user/repo.git"
+              />
+            </el-form-item>
+            
+            <el-form-item label="分支">
+              <el-input 
+                v-model="repoForm.branch" 
+                placeholder="请输入分支名称，默认为main"
+              />
+              <div class="form-tip">留空默认使用main分支</div>
+            </el-form-item>
+          </el-tab-pane>
+        </el-tabs>
 
         <el-form-item label="递归处理">
           <el-switch v-model="repoForm.recursive" />
@@ -411,8 +432,11 @@ const batchForm = ref({
 // 添加代码仓库索引表单
 const repoForm = ref({
   indexId: null,
+  sourceType: 'local',
   repoPath: '',
-  recursive: false,
+  gitUrl: '',
+  branch: 'main',
+  recursive: true,
   chunking: {
     strategy: 'paragraph',
     chunk_size: 500,
@@ -750,7 +774,10 @@ const handleIndexRepository = (index = null) => {
   
   repoForm.value = {
     indexId: currentIndex.value ? currentIndex.value.id : (indexList.value.length > 0 ? indexList.value[0].id : null),
+    sourceType: 'local',
     repoPath: '',
+    gitUrl: '',
+    branch: 'main',
     recursive: true,
     chunking: {
       strategy: 'paragraph',
@@ -770,9 +797,17 @@ const submitIndexRepository = async () => {
     return
   }
 
-  if (!repoForm.value.repoPath) {
-    ElMessage.warning('请输入代码仓库路径')
-    return
+  // 验证输入
+  if (repoForm.value.sourceType === 'local') {
+    if (!repoForm.value.repoPath) {
+      ElMessage.warning('请输入代码仓库路径')
+      return
+    }
+  } else if (repoForm.value.sourceType === 'git') {
+    if (!repoForm.value.gitUrl) {
+      ElMessage.warning('请输入Git仓库URL')
+      return
+    }
   }
 
   let metadata = {}
@@ -786,13 +821,28 @@ const submitIndexRepository = async () => {
   indexingRepo.value = true
   
   try {
-    const response = await indexApi.indexRepository(
-      repoForm.value.indexId, 
-      repoForm.value.repoPath, 
-      repoForm.value.chunking, 
-      metadata, 
-      repoForm.value.recursive
-    )
+    let response
+    
+    if (repoForm.value.sourceType === 'local') {
+      // 处理本地目录
+      response = await indexApi.indexRepository(
+        repoForm.value.indexId, 
+        repoForm.value.repoPath, 
+        repoForm.value.chunking, 
+        metadata, 
+        repoForm.value.recursive
+      )
+    } else {
+      // 处理Git仓库
+      response = await indexApi.indexGitRepository(
+        repoForm.value.indexId,
+        repoForm.value.gitUrl,
+        repoForm.value.branch,
+        repoForm.value.chunking,
+        metadata,
+        repoForm.value.recursive
+      )
+    }
     
     const result = response.data
     ElMessage.success(`索引代码仓库成功，共处理 ${result.total_files} 个文件，${result.total_chunks} 个文档`)
@@ -804,7 +854,8 @@ const submitIndexRepository = async () => {
     
     repoDialogVisible.value = false
   } catch (error) {
-    ElMessage.error('索引代码仓库失败')
+    console.error('索引代码仓库失败', error)
+    ElMessage.error(`索引代码仓库失败: ${error.message || '未知错误'}`)
   } finally {
     indexingRepo.value = false
   }

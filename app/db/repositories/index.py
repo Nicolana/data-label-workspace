@@ -166,7 +166,7 @@ class DocumentRepository:
                 metadata=document.metadata,
                 created_at=datetime.now()
             )
-    
+
     @staticmethod
     def list(index_id: int) -> List[Document]:
         with get_db_cursor() as cursor:

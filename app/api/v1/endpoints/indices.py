@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from app.core.exceptions import NotFoundException
-from app.models.index import Index, IndexCreate, Document, DocumentCreate
+from app.models.index import DocumentRecallRequest, Index, IndexCreate, Document, DocumentCreate
 from app.db.repositories.index import IndexRepository, DocumentRepository
 from app.models.response import ApiResponse, success
 from app.services.embedding import EmbeddingService
@@ -59,5 +59,6 @@ async def delete_document(index_id: int, document_id: int):
     return success(message="文档删除成功")
 
 @router.post("/indices/{index_id}/recall-test", response_model=ApiResponse[List[Document]])
-async def recall_test(index_id: int, query: str, top_k: int = 5):
-    return success(data=DocumentRepository.search_similar(index_id, query, top_k))
+async def recall_test(request: DocumentRecallRequest):
+    print(f"index_id: {request.index_id}, query: {request.query}, top_k: {request.top_k}")
+    return success(data=DocumentRepository.search_similar(request.index_id, request.query, request.top_k))

@@ -21,3 +21,8 @@ class Document(BaseDBModel):
     content: str
     metadata: Optional[Dict[str, Any]]
     similarity: Optional[float] = None 
+
+class DocumentRecallRequest(BaseModel):
+    index_id: int
+    query: str
+    top_k: Optional[int] = 5

@@ -85,6 +85,47 @@ class IndexRepository:
         with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM indices WHERE id = ?", (index_id,))
             return cursor.rowcount > 0
+    
+    @staticmethod
+    def rebuild_faiss_index(index_id: int) -> bool:
+        """
+        重建索引的 FAISS 向量索引
+        
+        Args:
+            index_id: 索引ID
+            
+        Returns:
+            bool: 是否成功
+        """
+        with get_db_cursor() as cursor:
+            # 获取所有文档
+            cursor.execute(
+                "SELECT id, embedding FROM documents WHERE index_id = ?",
+                (index_id,)
+            )
+            documents = cursor.fetchall()
+            
+            if not documents:
+                # 如果没有文档，创建空索引
+                faiss_index = faiss.IndexFlatL2(384)
+            else:
+                # 创建新的 FAISS 索引
+                faiss_index = faiss.IndexFlatL2(384)
+                
+                # 添加所有文档向量
+                for doc_id, embedding_bytes in documents:
+                    embedding = np.frombuffer(embedding_bytes, dtype=np.float32).reshape(1, -1)
+                    faiss_index.add(embedding)
+            
+            # 保存 FAISS 索引
+            index_bytes = pickle.dumps(faiss_index)
+            
+            cursor.execute(
+                "UPDATE vector_indices SET faiss_index = ? WHERE index_id = ?",
+                (index_bytes, index_id)
+            )
+            
+            return cursor.rowcount > 0
 
 class DocumentRepository:
     @staticmethod
@@ -130,7 +171,7 @@ class DocumentRepository:
                     id=row[0],
                     index_id=index_id,
                     content=row[1],
-                    metadata=json.loads(row[2]) if row[2] else None,
+                    metadata=json.loads(row[2]) if row[2] else {},
                     created_at=row[3]
                 )
                 for row in rows
@@ -148,8 +189,6 @@ class DocumentRepository:
             if not result:
                 return False
             
-            embedding = np.frombuffer(result[0], dtype=np.float32)
-            
             # 删除文档
             cursor.execute(
                 "DELETE FROM documents WHERE id = ? AND index_id = ?",
@@ -159,16 +198,8 @@ class DocumentRepository:
             if cursor.rowcount == 0:
                 return False
             
-            # 更新 FAISS 索引
-            cursor.execute("SELECT faiss_index FROM vector_indices WHERE index_id = ?", (index_id,))
-            faiss_index = pickle.loads(cursor.fetchone()[0])
-            faiss_index.remove_ids(np.array([document_id]))
-            index_bytes = pickle.dumps(faiss_index)
-            
-            cursor.execute(
-                "UPDATE vector_indices SET faiss_index = ? WHERE index_id = ?",
-                (index_bytes, index_id)
-            )
+            # 重建 FAISS 索引
+            IndexRepository.rebuild_faiss_index(index_id)
             
             return True
     
@@ -177,10 +208,18 @@ class DocumentRepository:
         with get_db_cursor() as cursor:
             # 加载 FAISS 索引
             cursor.execute("SELECT faiss_index FROM vector_indices WHERE index_id = ?", (index_id,))
-            faiss_index = pickle.loads(cursor.fetchone()[0])
+            faiss_index_bytes = cursor.fetchone()
+            if not faiss_index_bytes:
+                return []
+                
+            faiss_index = pickle.loads(faiss_index_bytes[0])
+            
+            # 检查索引中是否有向量
+            if faiss_index.ntotal == 0:
+                return []
             
             # 搜索相似向量
-            distances, indices = faiss_index.search(query_embedding.reshape(1, -1), k)
+            distances, indices = faiss_index.search(query_embedding.reshape(1, -1), min(k, faiss_index.ntotal))
             
             # 获取文档内容
             results = []
@@ -190,7 +229,7 @@ class DocumentRepository:
                 
                 cursor.execute(
                     "SELECT id, content, metadata, created_at FROM documents WHERE index_id = ? AND id = ?",
-                    (index_id, idx)
+                    (index_id, int(idx))
                 )
                 row = cursor.fetchone()
                 if row:
@@ -199,7 +238,7 @@ class DocumentRepository:
                             id=row[0],
                             index_id=index_id,
                             content=row[1],
-                            metadata=json.loads(row[2]) if row[2] else None,
+                            metadata=json.loads(row[2]) if row[2] else {},
                             created_at=row[3],
                             similarity=float(1 / (1 + distances[0][i]))  # 转换距离为相似度
                         )

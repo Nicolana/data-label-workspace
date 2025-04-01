@@ -21,8 +21,13 @@ export const indexApi = {
     return request.delete(`/indices/${id}`)
   },
 
+  // 重建索引
+  rebuildIndex(id) {
+    return request.post(`/indices/${id}/rebuild`)
+  },
+
   // 添加文档
-  addDocument(indexId, data) {
+  createDocument(indexId, data) {
     return request.post(`/indices/${indexId}/documents`, data)
   },
 
@@ -36,11 +41,54 @@ export const indexApi = {
     return request.delete(`/indices/${indexId}/documents/${documentId}`)
   },
 
-  testRecall: (indexId, params) => {
+  // 召回测试
+  testRecall(indexId, data) {
     return request({
       url: `/indices/${indexId}/recall-test`,
       method: 'post',
-      data: params
+      data: {
+        ...data,
+        index_id: indexId
+      }
+    })
+  },
+
+  // 文件上传
+  uploadFile(indexId, file, config, metadata = {}) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('config_json', JSON.stringify(config))
+    formData.append('metadata_json', JSON.stringify(metadata))
+    
+    return request({
+      url: `/indices/${indexId}/upload-file`,
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  // 批量上传
+  batchUpload(indexId, files, config, metadata = {}) {
+    const formData = new FormData()
+    
+    // 添加多个文件
+    files.forEach(file => {
+      formData.append('files', file)
+    })
+    
+    formData.append('config_json', JSON.stringify(config))
+    formData.append('metadata_json', JSON.stringify(metadata))
+    
+    return request({
+      url: `/indices/${indexId}/batch-upload`,
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     })
   }
 } 

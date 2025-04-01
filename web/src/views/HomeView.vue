@@ -55,7 +55,7 @@ const isEditing = ref(false)
 const fetchConversations = async () => {
   try {
     const response = await conversationApi.getConversations()
-    conversations.value = response;
+    conversations.value = response.data;
   } catch (error) {
     console.error('获取对话列表失败:', error)
     ElMessage.error('获取对话列表失败')

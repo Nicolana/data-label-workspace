@@ -71,7 +71,7 @@ const editingConversation = ref(null)
 const fetchConversation = async () => {
   try {
     const response = await conversationApi.getConversation(route.params.id)
-    conversation.value = response
+    conversation.value = response.data
   } catch (error) {
     console.error('获取对话详情失败:', error)
     ElMessage.error('获取对话详情失败')

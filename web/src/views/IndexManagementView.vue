@@ -31,6 +31,9 @@
             <el-button type="success" size="small" @click="handleAddDocuments(row)">
               添加文档
             </el-button>
+            <el-button type="info" size="small" @click="handleRecallTest(row)">
+              召回测试
+            </el-button>
             <el-button type="warning" size="small" @click="handleRebuildIndex(row)">
               重建索引
             </el-button>
@@ -97,6 +100,30 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <!-- 召回测试对话框 -->
+    <el-dialog v-model="recallTestDialogVisible" title="索引召回测试" width="600px">
+      <el-form :model="recallTestForm" label-width="100px">
+        <el-form-item label="测试查询">
+          <el-input v-model="recallTestForm.query" type="textarea" :rows="3" placeholder="请输入测试查询内容" />
+        </el-form-item>
+        <el-form-item label="结果数量">
+          <el-input-number v-model="recallTestForm.top_k" :min="1" :max="100" />
+        </el-form-item>
+      </el-form>
+      <el-divider />
+      <h4>召回结果</h4>
+      <el-table :data="recallResults" style="width: 100%">
+        <el-table-column prop="content" label="内容" show-overflow-tooltip />
+        <el-table-column prop="score" label="相似度" width="100" />
+      </el-table>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="recallTestDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitRecallTest">测试</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -114,6 +141,12 @@ const addDocDialogVisible = ref(false)
 const viewDocDialogVisible = ref(false)
 const documents = ref([])
 const currentIndex = ref(null)
+const recallTestDialogVisible = ref(false)
+const recallTestForm = ref({
+  query: '',
+  top_k: 5
+})
+const recallResults = ref([])
 
 const indexForm = ref({
   name: '',
@@ -262,6 +295,30 @@ const handleBatchImport = () => {
 // 格式化时间
 const formatTime = (time) => {
   return new Date(time).toLocaleString()
+}
+
+// 召回测试
+const handleRecallTest = (index) => {
+  currentIndex.value = index
+  recallTestForm.value = {
+    query: '',
+    top_k: 5
+  }
+  recallResults.value = []
+  recallTestDialogVisible.value = true
+}
+
+const submitRecallTest = async () => {
+  try {
+    const response = await indexApi.testRecall(currentIndex.value.id, {
+      query: recallTestForm.value.query,
+      top_k: recallTestForm.value.top_k
+    })
+    recallResults.value = response.data
+    ElMessage.success('召回测试成功')
+  } catch (error) {
+    ElMessage.error('召回测试失败')
+  }
 }
 
 onMounted(() => {

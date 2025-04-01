@@ -34,5 +34,13 @@ export const indexApi = {
   // 删除文档
   deleteDocument(indexId, documentId) {
     return request.delete(`/indices/${indexId}/documents/${documentId}`)
+  },
+
+  testRecall: (indexId, params) => {
+    return request({
+      url: `/indices/${indexId}/recall-test`,
+      method: 'post',
+      data: params
+    })
   }
 } 

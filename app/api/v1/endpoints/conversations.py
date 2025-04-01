@@ -31,7 +31,7 @@ async def copy_conversation(conversation_id: int):
         return NotFoundException(message="对话不存在")
     return success(data=conversation)
 
-@router.put("/conversations/{conversation_id}", response_model=Conversation)
+@router.put("/conversations/{conversation_id}", response_model=ApiResponse[Conversation])
 async def update_conversation(conversation_id: int, conversation: Conversation):
     updated_conversation = ConversationRepository.update(conversation_id, conversation)
     if not updated_conversation:

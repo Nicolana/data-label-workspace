@@ -36,6 +36,8 @@ class DocumentProcessor:
             text = DocumentProcessor._read_docx_file(file_path)
         elif file_ext == '.pdf':
             text = DocumentProcessor._read_pdf_file(file_path)
+        elif file_ext in ['.md', '.markdown']:
+            text = DocumentProcessor._read_markdown_file(file_path)
         else:
             raise ValueError(f"不支持的文件类型: {file_ext}")
         
@@ -95,6 +97,12 @@ class DocumentProcessor:
                 page = reader.pages[page_num]
                 text.append(page.extract_text())
             return '\n'.join(text)
+    
+    @staticmethod
+    def _read_markdown_file(file_path: str) -> str:
+        """读取Markdown文件，保留原始格式"""
+        # Markdown直接作为文本文件读取，保留其格式，便于后续处理
+        return DocumentProcessor._read_text_file(file_path)
     
     @staticmethod
     def _chunk_by_paragraph(text: str, config: ChunkingConfig) -> List[str]:

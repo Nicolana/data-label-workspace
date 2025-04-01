@@ -58,7 +58,7 @@
             <el-button type="primary" size="small" @click="handleAddDocuments(currentIndex)">
               <el-icon><Plus /></el-icon>添加文档
             </el-button>
-            <el-button type="success" size="small" @click="handleUploadFile(currentIndex)">
+            <el-button type="success" size="small" @click="handleBatchImport(currentIndex)">
               <el-icon><Upload /></el-icon>上传文件
             </el-button>
           </div>
@@ -174,101 +174,9 @@
     </el-dialog>
 
     <!-- 文件上传对话框 -->
-    <el-dialog v-model="uploadDialogVisible" title="上传文件" width="650px">
-      <el-form :model="uploadForm" label-width="120px">
-        <el-form-item label="文件">
-          <el-upload
-            ref="uploadRef"
-            action="#"
-            :auto-upload="false"
-            :limit="5"
-            :multiple="true"
-            :on-exceed="handleExceed"
-            :on-change="handleFileChange"
-            :file-list="fileList"
-          >
-            <template #trigger>
-              <el-button type="primary">选择文件</el-button>
-            </template>
-            <template #tip>
-              <div class="el-upload__tip">
-                支持 .txt、.docx、.pdf 格式文件，单个文件不超过10MB
-              </div>
-            </template>
-          </el-upload>
-        </el-form-item>
-
-        <el-divider content-position="left">切片配置</el-divider>
-
-        <el-form-item label="切片策略">
-          <el-select v-model="uploadForm.chunking.strategy" style="width: 100%">
-            <el-option label="按段落切分" value="paragraph" />
-            <el-option label="按固定字符数切分" value="fixed_size" />
-            <el-option label="按句子切分" value="sentence" />
-            <el-option label="不切分(整个文档)" value="no_chunking" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item 
-          label="块大小(字符数)" 
-          v-if="uploadForm.chunking.strategy === 'fixed_size'"
-        >
-          <el-input-number 
-            v-model="uploadForm.chunking.chunk_size" 
-            :min="100" 
-            :max="5000" 
-            :step="100" 
-            style="width: 100%"
-          />
-        </el-form-item>
-
-        <el-form-item 
-          label="块重叠(字符数)" 
-          v-if="uploadForm.chunking.strategy !== 'no_chunking'"
-        >
-          <el-input-number 
-            v-model="uploadForm.chunking.chunk_overlap" 
-            :min="0" 
-            :max="500" 
-            :step="10" 
-            style="width: 100%"
-          />
-        </el-form-item>
-
-        <el-form-item 
-          label="自定义分隔符" 
-          v-if="uploadForm.chunking.strategy === 'paragraph'"
-        >
-          <el-input 
-            v-model="uploadForm.chunking.separator" 
-            placeholder="留空使用默认段落分隔(两个换行)" 
-          />
-        </el-form-item>
-
-        <el-divider content-position="left">元数据</el-divider>
-
-        <el-form-item label="元数据">
-          <el-input
-            v-model="uploadForm.metadata"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入JSON格式的元数据，将添加到所有文档"
-          />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="uploadDialogVisible = false">取消</el-button>
-          <el-button :loading="uploading" type="primary" @click="submitUploadFile">开始上传</el-button>
-        </span>
-      </template>
-    </el-dialog>
-
-    <!-- 批量导入对话框 -->
-    <el-dialog v-model="batchDialogVisible" title="批量导入文档" width="650px">
+    <el-dialog v-model="batchDialogVisible" title="上传文件" width="650px">
       <el-form :model="batchForm" label-width="120px">
-        <el-form-item label="选择索引">
+        <el-form-item v-if="!currentIndex" label="选择索引">
           <el-select v-model="batchForm.indexId" style="width: 100%">
             <el-option
               v-for="item in indexList"
@@ -294,7 +202,7 @@
             </template>
             <template #tip>
               <div class="el-upload__tip">
-                支持 .txt、.docx、.pdf 格式文件，单个文件不超过10MB
+                支持 .txt、.docx、.pdf、.md 格式文件，单个文件不超过10MB
               </div>
             </template>
           </el-upload>
@@ -379,7 +287,6 @@ import { indexApi } from '../api/index'
 const indexList = ref([])
 const createDialogVisible = ref(false)
 const addDocDialogVisible = ref(false)
-const uploadDialogVisible = ref(false)
 const batchDialogVisible = ref(false)
 const documents = ref([])
 const currentIndex = ref(null)
@@ -387,9 +294,7 @@ const activeTab = ref('documents')
 const recallQuery = ref('')
 const chatHistory = ref([])
 const uploading = ref(false)
-const fileList = ref([])
 const batchFileList = ref([])
-const uploadRef = ref(null)
 const batchUploadRef = ref(null)
 
 const indexForm = ref({
@@ -400,17 +305,6 @@ const indexForm = ref({
 const documentForm = ref({
   content: '',
   metadata: ''
-})
-
-// 文件上传表单
-const uploadForm = ref({
-  chunking: {
-    strategy: 'paragraph',
-    chunk_size: 500,
-    chunk_overlap: 50,
-    separator: null
-  },
-  metadata: '{}'
 })
 
 // 批量导入表单
@@ -516,98 +410,18 @@ const submitAddDocument = async () => {
 }
 
 // 文件上传
-const handleUploadFile = (index) => {
-  currentIndex.value = index
-  uploadForm.value = {
-    chunking: {
-      strategy: 'paragraph',
-      chunk_size: 500,
-      chunk_overlap: 50,
-      separator: null
-    },
-    metadata: '{}'
+const handleBatchImport = (index = null) => {
+  if (index) {
+    currentIndex.value = index
   }
-  fileList.value = []
-  uploadDialogVisible.value = true
-}
-
-const handleFileChange = (file, fileList) => {
-  fileList.value = fileList
-}
-
-const handleBatchFileChange = (file, fileList) => {
-  batchFileList.value = fileList
-}
-
-const handleExceed = () => {
-  ElMessage.warning('最多只能上传5个文件')
-}
-
-const submitUploadFile = async () => {
-  if (fileList.value.length === 0) {
-    ElMessage.warning('请选择要上传的文件')
-    return
-  }
-
-  let metadata = {}
-  try {
-    metadata = JSON.parse(uploadForm.value.metadata)
-  } catch (e) {
-    // 使用空对象作为默认值
-    metadata = {}
-  }
-
-  uploading.value = true
   
-  try {
-    // 如果只有一个文件，使用单文件上传API
-    if (fileList.value.length === 1) {
-      const file = fileList.value[0].raw
-      
-      const response = await indexApi.uploadFile(
-        currentIndex.value.id,
-        file,
-        uploadForm.value.chunking,
-        metadata
-      )
-      
-      ElMessage.success(`文件上传成功，共切分为 ${response.data.chunk_count} 个文档`)
-    } else {
-      // 多个文件使用批量上传API
-      const files = fileList.value.map(item => item.raw)
-      
-      const response = await indexApi.batchUpload(
-        currentIndex.value.id,
-        files,
-        uploadForm.value.chunking,
-        metadata
-      )
-      
-      const totalChunks = response.data.reduce((sum, item) => sum + item.chunk_count, 0)
-      ElMessage.success(`文件批量上传成功，共 ${response.data.length} 个文件，${totalChunks} 个文档`)
-    }
-    
-    // 刷新文档列表
-    await fetchDocuments(currentIndex.value.id)
-    
-    // 关闭对话框
-    uploadDialogVisible.value = false
-  } catch (error) {
-    ElMessage.error('文件上传失败')
-  } finally {
-    uploading.value = false
-  }
-}
-
-// 批量导入
-const handleBatchImport = () => {
-  if (indexList.value.length === 0) {
+  if (!currentIndex.value && indexList.value.length === 0) {
     ElMessage.warning('请先创建至少一个索引')
     return
   }
   
   batchForm.value = {
-    indexId: indexList.value[0].id,
+    indexId: currentIndex.value ? currentIndex.value.id : (indexList.value.length > 0 ? indexList.value[0].id : null),
     chunking: {
       strategy: 'paragraph',
       chunk_size: 500,
@@ -618,6 +432,14 @@ const handleBatchImport = () => {
   }
   batchFileList.value = []
   batchDialogVisible.value = true
+}
+
+const handleBatchFileChange = (file, fileList) => {
+  batchFileList.value = fileList
+}
+
+const handleExceed = () => {
+  ElMessage.warning('最多只能上传5个文件')
 }
 
 const submitBatchUpload = async () => {
@@ -644,17 +466,30 @@ const submitBatchUpload = async () => {
   try {
     const files = batchFileList.value.map(item => item.raw)
     
-    const response = await indexApi.batchUpload(
-      batchForm.value.indexId,
-      files,
-      batchForm.value.chunking,
-      metadata
-    )
+    // 如果只有一个文件，使用单文件上传API
+    if (files.length === 1) {
+      const response = await indexApi.uploadFile(
+        batchForm.value.indexId,
+        files[0],
+        batchForm.value.chunking,
+        metadata
+      )
+      
+      ElMessage.success(`文件上传成功，共切分为 ${response.data.chunk_count} 个文档`)
+    } else {
+      // 多个文件使用批量上传API
+      const response = await indexApi.batchUpload(
+        batchForm.value.indexId,
+        files,
+        batchForm.value.chunking,
+        metadata
+      )
+      
+      const totalChunks = response.data.reduce((sum, item) => sum + item.chunk_count, 0)
+      ElMessage.success(`文件批量上传成功，共 ${response.data.length} 个文件，${totalChunks} 个文档`)
+    }
     
-    const totalChunks = response.data.reduce((sum, item) => sum + item.chunk_count, 0)
-    ElMessage.success(`文件批量上传成功，共 ${response.data.length} 个文件，${totalChunks} 个文档`)
-    
-    // 如果选择的索引是当前显示的索引，刷新文档列表
+    // 刷新文档列表
     if (currentIndex.value && currentIndex.value.id === batchForm.value.indexId) {
       await fetchDocuments(currentIndex.value.id)
     }

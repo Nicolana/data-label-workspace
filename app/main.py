@@ -4,7 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
-from app.api.v1.endpoints import conversations, indices, example
+from app.api.v1.endpoints import chat_conversations, conversations, indices, example
 from app.db.migrations import init_db
 from app.core.middlewares import ResponseFormatMiddleware
 from app.core.exceptions import (
@@ -40,6 +40,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.include_router(conversations.router, prefix=settings.API_V1_STR)
 app.include_router(indices.router, prefix=settings.API_V1_STR)
 app.include_router(example.router, prefix=settings.API_V1_STR)
+app.include_router(chat_conversations.router, prefix=settings.API_V1_STR)
 
 # 初始化数据库
 init_db()

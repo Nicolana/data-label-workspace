@@ -11,7 +11,11 @@ openai_service = OpenAIService()
 
 @router.post("/conversations", response_model=ApiResponse[Conversation])
 async def create_conversation(conversation: Conversation):
-    return success(data=ConversationRepository.create(conversation.title, conversation.messages))
+    return success(data=ConversationRepository.create(conversation.messages))
+
+@router.post("/conversations/batch", response_model=ApiResponse[List[Conversation]])
+async def batch_create_conversations(conversations: List[Conversation]):
+    return success(data=ConversationRepository.batch_create(conversations))
 
 @router.get("/conversations", response_model=ApiResponse[List[Conversation]])
 async def list_conversations():
@@ -43,31 +47,3 @@ async def delete_conversation(conversation_id: int):
     if not ConversationRepository.delete(conversation_id):
         raise NotFoundException(message="对话不存在")
     return success(message="对话删除成功")
-
-@router.post("/chat-conversations", response_model=ApiResponse[ChatConversation])
-async def create_chat_conversation(conversation: ChatConversation):
-    return success(data=ChatConversationRepository.create(conversation.title))
-
-@router.get("/chat-conversations", response_model=ApiResponse[List[ChatConversation]])
-async def list_chat_conversations():
-    return success(data=ChatConversationRepository.list())
-
-@router.get("/chat-conversations/{conversation_id}", response_model=ApiResponse[ChatConversation])
-async def get_chat_conversation(conversation_id: int):
-    conversation = ChatConversationRepository.get(conversation_id)
-    if not conversation:
-        raise NotFoundException(message="对话不存在")
-    return success(data=conversation)
-
-@router.delete("/chat-conversations/{conversation_id}")
-async def delete_chat_conversation(conversation_id: int):
-    if not ChatConversationRepository.delete(conversation_id):
-        raise NotFoundException(message="对话不存在")
-    return success(message="对话删除成功")
-
-@router.put("/chat-conversations/{conversation_id}/title", response_model=ApiResponse[ChatConversation])
-async def update_chat_conversation_title(conversation_id: int, title: str):
-    conversation = ChatConversationRepository.update_title(conversation_id, title)
-    if not conversation:
-        raise NotFoundException(message="对话不存在")
-    return success(data=conversation)

@@ -6,24 +6,50 @@ from app.models.conversation import Conversation, Message, ChatConversation, Cha
 from app.utils.token import count_tokens
 class ConversationRepository:
     @staticmethod
-    def create(title: str, messages: List[Message]) -> Conversation:
+    def create(messages: List[Message]) -> Conversation:
         now = datetime.now().isoformat()
         messages_json = json.dumps([msg.dict() for msg in messages])
         
         with get_db_cursor() as cursor:
             cursor.execute(
-                "INSERT INTO conversations (title, messages, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (title, messages_json, now, now)
+                "INSERT INTO conversations (messages, created_at, updated_at) VALUES (?, ?, ?)",
+                (messages_json, now, now)
             )
             conversation_id = cursor.lastrowid
             
             return Conversation(
                 id=conversation_id,
-                title=title,
                 messages=messages,
+                token_count=count_tokens(messages_json),
                 created_at=now,
                 updated_at=now
             )
+    @staticmethod
+    def batch_create(messages_list: List[List[Message]]) -> List[Conversation]:
+        now = datetime.now().isoformat()
+        conversations = []
+        
+        with get_db_cursor() as cursor:
+            for messages in messages_list:
+                messages_json = json.dumps([msg.dict() for msg in messages])
+                cursor.execute(
+                    "INSERT INTO conversations (messages, created_at, updated_at) VALUES (?, ?, ?)",
+                    (messages_json, now, now)
+                )
+                conversation_id = cursor.lastrowid
+                
+                conversations.append(
+                    Conversation(
+                        id=conversation_id,
+                        messages=messages,
+                        created_at=now,
+                        updated_at=now,
+                        token_count=count_tokens(messages_json),
+                        message_count=len(messages)
+                    )
+                )
+            
+            return conversations
     
     @staticmethod
     def get(conversation_id: int) -> Optional[Conversation]:

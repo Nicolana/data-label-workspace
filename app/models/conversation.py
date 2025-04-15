@@ -8,7 +8,6 @@ class Message(BaseModel):
     content: str
 
 class Conversation(BaseDBModel):
-    title: str
     messages: List[Message]
     token_count: Optional[int] = None
     message_count: Optional[int] = None

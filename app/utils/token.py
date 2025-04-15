@@ -5,7 +5,6 @@ def count_tokens(messages: List[Dict[str, str]]) -> int:
     """计算消息列表的token数量"""
     enc = tiktoken.encoding_for_model("gpt-3.5-turbo")
     total_tokens = 0
-    print(messages)
     
     for message in messages:
         # 计算消息内容的 tokens

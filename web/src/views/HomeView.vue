@@ -121,7 +121,7 @@ const handleExportConversation = async (id) => {
   try {
     const response = await conversationApi.getConversation(id)
     const data = response.data
-    const jsonlContent = JSON.stringify(data)
+    const jsonlContent = JSON.stringify(data?.messages)
     downloadAsFile(jsonlContent, `conversation_${id}.jsonl`)
     ElMessage.success('对话已导出')
   } catch (error) {

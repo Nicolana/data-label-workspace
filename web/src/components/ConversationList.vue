@@ -21,6 +21,14 @@
             >
               批量导出 <span v-if="selectedIds.length > 0">({{ selectedIds.length }})</span>
             </el-button>
+            <el-button 
+              type="info" 
+              size="small" 
+              @click="showImportDialog"
+              :icon="Upload"
+            >
+              批量导入
+            </el-button>
           </div>
         </div>
         <div class="list-stats">
@@ -125,18 +133,23 @@
         v-model="generateDialogVisible"
         @success="handleGenerateSuccess"
       />
+      <ImportDialog
+        v-model="importDialogVisible"
+        @success="handleImportSuccess"
+      />
     </div>
 </template>
 
 <script>
 import { ref, watch, computed } from 'vue'
-import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument, MagicStick } from '@element-plus/icons-vue'
-import { encoding_for_model } from 'tiktoken'
+import { Document, ChatLineRound, Delete, Download, Plus, CopyDocument, MagicStick, Upload } from '@element-plus/icons-vue'
 import GenerateDialog from './GenerateDialog.vue'
+import ImportDialog from './ImportDialog.vue'
 
 export default {
   components: {
-    GenerateDialog
+    GenerateDialog,
+    ImportDialog
   },
   props: {
     conversations: {
@@ -144,11 +157,12 @@ export default {
       required: true
     }
   },
-  emits: ['select', 'create', 'delete', 'export', 'batch-export', 'copy', 'generate-success'],
+  emits: ['select', 'create', 'delete', 'export', 'batch-export', 'copy', 'generate-success', 'import-success'],
   setup(props, { emit }) {
     const localConversations = ref([])
     const selectAll = ref(false)
     const generateDialogVisible = ref(false)
+    const importDialogVisible = ref(false)
     const selectedRows = ref([])
     
     // 计算选中的ID列表
@@ -219,6 +233,14 @@ export default {
       emit('generate-success', conversation)
     }
 
+    const showImportDialog = () => {
+      importDialogVisible.value = true
+    }
+
+    const handleImportSuccess = (data) => {
+      emit('import-success', data)
+    }
+
     // 监听会话列表变化，创建本地副本
     watch(() => props.conversations, (newVal) => {
       localConversations.value = newVal.map(conv => ({
@@ -239,6 +261,9 @@ export default {
       showGenerateDialog,
       handleGenerateSuccess,
       handleSelectionChange,
+      importDialogVisible,
+      showImportDialog,
+      handleImportSuccess,
       Document,
       ChatLineRound,
       Delete,
@@ -246,6 +271,7 @@ export default {
       Plus,
       CopyDocument,
       MagicStick,
+      Upload,
     }
   }
 }

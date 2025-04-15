@@ -29,6 +29,11 @@ export const conversationApi = {
   // 更新对话
   updateConversation(id, data) {
     return request.put(`/conversations/${id}`, data)
+  },
+
+  // 批量创建对话
+  batchCreateConversations(conversations) {
+    return request.post('/conversations/batch', { conversations })
   }
 } 
 

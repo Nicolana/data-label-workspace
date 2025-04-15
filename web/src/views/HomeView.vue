@@ -9,6 +9,7 @@
       @batch-export="handleBatchExportSelected"
       @copy="handleCopyConversation"
       @generate-success="handleGenerateSuccess"
+      @import-success="handleImportSuccess"
     />
     
     <div class="empty-placeholder">
@@ -192,6 +193,11 @@ const handleCopyConversation = async (conversationId) => {
 const handleGenerateSuccess = async (conversation) => {
   await fetchConversations()
   router.push(`/conversation/${conversation.id}`)
+}
+
+const handleImportSuccess = async (data) => {
+  await fetchConversations()
+  ElMessage.success('对话已导入')
 }
 
 onMounted(() => {

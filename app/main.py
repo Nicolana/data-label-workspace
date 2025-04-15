@@ -34,7 +34,7 @@ app.add_middleware(ResponseFormatMiddleware)
 # 注册异常处理器
 app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
+# app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # 注册路由
 app.include_router(conversations.router, prefix=settings.API_V1_STR)

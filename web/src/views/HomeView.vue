@@ -156,7 +156,8 @@ const exportMultipleConversations = async (ids) => {
     )
     
     const responses = await Promise.all(exportPromises)
-    const allData = responses.map(response => response.data)
+    const allData = responses.map(response => response.data?.messages)
+    console.log(allData)
     
     const jsonlContent = allData.map(data => JSON.stringify(data)).join('\n')
     downloadAsFile(jsonlContent, `conversations_batch_${new Date().getTime()}.jsonl`)

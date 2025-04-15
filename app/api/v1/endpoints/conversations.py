@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from typing import List
 from app.core.exceptions import NotFoundException
-from app.models.conversation import Conversation, Message, ChatConversation, ChatMessage
-from app.db.repositories.conversation import ConversationRepository, ChatConversationRepository
+from app.models.conversation import Conversation, ChatConversation
+from app.db.repositories.conversation import ConversationRepository
 from app.models.response import ApiResponse, success
+from app.schemas.request.chat import CreateChatRequest
+from app.schemas.response.conversation import ConversationResponse
 from app.services.openai import OpenAIService
 
 router = APIRouter()
@@ -13,9 +15,9 @@ openai_service = OpenAIService()
 async def create_conversation(conversation: Conversation):
     return success(data=ConversationRepository.create(conversation.messages))
 
-@router.post("/conversations/batch", response_model=ApiResponse[List[Conversation]])
-async def batch_create_conversations(conversations: List[Conversation]):
-    return success(data=ConversationRepository.batch_create(conversations))
+@router.post("/conversations_batch", response_model=ApiResponse[ConversationResponse])
+async def batch_create_conversations(items: CreateChatRequest):
+    return success(data=ConversationRepository.batch_create(items))
 
 @router.get("/conversations", response_model=ApiResponse[List[Conversation]])
 async def list_conversations():

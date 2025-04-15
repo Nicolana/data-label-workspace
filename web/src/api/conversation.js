@@ -33,7 +33,7 @@ export const conversationApi = {
 
   // 批量创建对话
   batchCreateConversations(conversations) {
-    return request.post('/conversations/batch', { conversations })
+    return request.post('/conversations_batch', { messages: conversations })
   }
 } 
 

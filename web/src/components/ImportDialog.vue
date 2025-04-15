@@ -12,7 +12,7 @@
       :auto-upload="false"
       :on-change="handleFileChange"
       :limit="1"
-      accept=".json"
+      accept=".json,.jsonl"
     >
       <el-icon class="el-icon--upload"><upload-filled /></el-icon>
       <div class="el-upload__text">
@@ -20,7 +20,7 @@
       </div>
       <template #tip>
         <div class="el-upload__tip">
-          请上传 JSON 格式的对话数据文件
+          请上传 JSON 或 JSONL 格式的对话数据文件
         </div>
       </template>
     </el-upload>
@@ -62,6 +62,12 @@ export default {
       fileList.value = [file]
     }
 
+    const parseJsonl = (text) => {
+      return text.split('\n')
+        .filter(line => line.trim())
+        .map(line => JSON.parse(line))
+    }
+
     const handleImport = async () => {
       if (fileList.value.length === 0) {
         ElMessage.warning('请选择要导入的文件')
@@ -77,18 +83,28 @@ export default {
       importing.value = true
       try {
         const text = await file.raw.text()
-        const data = JSON.parse(text)
+        let data
         
-        // 验证数据格式
-        if (!Array.isArray(data)) {
-          throw new Error('数据格式错误：应为数组格式')
+        // 根据文件扩展名判断格式
+        if (file.name.endsWith('.jsonl')) {
+          data = parseJsonl(text)
+        } else {
+          data = JSON.parse(text)
+          if (!Array.isArray(data)) {
+            data = [data] // 单个对象转换为数组
+          }
         }
-
+        
         // 验证每条数据的必要字段
         data.forEach((item, index) => {
-          if (!item.id || !item.messages || !Array.isArray(item.messages)) {
-            throw new Error(`第 ${index + 1} 条数据格式错误：缺少必要字段`)
+          if (!Array.isArray(item)) {
+            throw new Error(`第 ${index + 1} 条数据格式错误：必须是数组格式`)
           }
+          item.forEach((message, msgIndex) => {
+            if (!message.role || !message.content) {
+              throw new Error(`第 ${index + 1} 条数据的第 ${msgIndex + 1} 条消息格式错误：缺少 role 或 content 字段`)
+            }
+          })
         })
 
         // 批量创建对话
@@ -100,8 +116,6 @@ export default {
         } else {
           ElMessage.error(response.message || '导入失败')
         }
-        dialogVisible.value = false
-        ElMessage.success('导入成功')
       } catch (error) {
         ElMessage.error(error.message || '导入失败')
       } finally {
@@ -137,4 +151,4 @@ export default {
   font-size: 12px;
   margin-top: 8px;
 }
-</style> 
+</style>

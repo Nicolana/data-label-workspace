@@ -1,9 +1,13 @@
 import json
+import random
 from datetime import datetime
 from typing import List, Optional
 from app.db.session import get_db_cursor
 from app.models.conversation import Conversation, Message, ChatConversation, ChatMessage
+from app.schemas.request.chat import CreateChatRequest
+from app.schemas.response.conversation import ConversationResponse
 from app.utils.token import count_tokens
+
 class ConversationRepository:
     @staticmethod
     def create(messages: List[Message]) -> Conversation:
@@ -25,31 +29,40 @@ class ConversationRepository:
                 updated_at=now
             )
     @staticmethod
-    def batch_create(messages_list: List[List[Message]]) -> List[Conversation]:
+    def batch_create(conversations: CreateChatRequest) -> ConversationResponse:
         now = datetime.now().isoformat()
-        conversations = []
+        created_conversations = []
         
         with get_db_cursor() as cursor:
-            for messages in messages_list:
-                messages_json = json.dumps([msg.dict() for msg in messages])
+            for conversation in conversations.messages:
+                conversation_id = random.randint(1000000000000000000, 9999999999999999999)
+                messages_json = json.dumps([msg.dict() for msg in conversation])
+                # 如果没有提供标题，生成一个随机标题
+                titles = ["创意对话", "头脑风暴", "思维碰撞", "灵感火花", "智慧交流"]
+                title = f"{random.choice(titles)} {conversation_id}"
+
                 cursor.execute(
-                    "INSERT INTO conversations (messages, created_at, updated_at) VALUES (?, ?, ?)",
-                    (messages_json, now, now)
+                    "INSERT INTO conversations (messages, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                    (messages_json, title, now, now)
                 )
                 conversation_id = cursor.lastrowid
                 
-                conversations.append(
+                created_conversations.append(
                     Conversation(
+                        title=f"对话 {conversation_id}",
                         id=conversation_id,
-                        messages=messages,
+                        messages=conversation,
                         created_at=now,
                         updated_at=now,
-                        token_count=count_tokens(messages_json),
-                        message_count=len(messages)
+                        message_count=len(conversation)
                     )
                 )
             
-            return conversations
+            return ConversationResponse(
+                id=conversation_id,
+                message_count=len(conversation),
+                messages=conversation
+            )
     
     @staticmethod
     def get(conversation_id: int) -> Optional[Conversation]:

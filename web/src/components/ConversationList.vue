@@ -106,6 +106,15 @@
                     circle
                   ></el-button>
                 </el-tooltip>
+                <el-tooltip content="编辑对话" placement="top">
+                  <el-button 
+                    type="warning" 
+                    size="small" 
+                    @click="$emit('edit', row.id)"
+                    :icon="Edit"
+                    circle
+                  ></el-button>
+                </el-tooltip>
                 <el-tooltip content="导出对话" placement="top">
                   <el-button 
                     type="success" 
